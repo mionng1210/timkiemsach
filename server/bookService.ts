@@ -21,6 +21,7 @@ export interface ShelfRow {
 export interface RackInfo {
   rackNumber: number;
   shelves: ShelfRow[];
+  bays: number[];  // Danh sách bay thực tế (VD: [1,2] nếu chỉ có a,b,e,f)
 }
 
 export interface CampusData {
@@ -34,14 +35,20 @@ export interface SearchResult {
   campus: string;
 }
 
-// ===== Thuật toán U-Shape =====
-function letterToBayFace(letter: string): { bay: number; face: number } {
-  const idx = letter.toLowerCase().charCodeAt(0) - 97; // a=0, b=1, ... f=5
-  if (idx < 0 || idx > 5) return { bay: 1, face: 1 };
-  if (idx < 3) {
-    return { face: 1, bay: idx + 1 };  // a→Bay1, b→Bay2, c→Bay3
+// ===== Thuật toán U-Shape (Dựa trên ký tự max của kệ) =====
+// Max letter 'f' → kệ 3 bay: a=B1F, b=B2F, c=B3F, d=B3B, e=B2B, f=B1B
+// Max letter 'd' → kệ 2 bay: a=B1F, b=B2F, c=B2B, d=B1B
+// Max letter 'b' → kệ 1 bay: a=B1F, b=B1B
+function letterToBayFace(letter: string, maxLetter: string): { bay: number; face: number } {
+  const idx = letter.toLowerCase().charCodeAt(0) - 97; // a=0, b=1, ...
+  const maxIdx = maxLetter.toLowerCase().charCodeAt(0) - 97;
+  const totalPositions = maxIdx + 1; // f→6, d→4, b→2
+  const half = totalPositions / 2;
+
+  if (idx < half) {
+    return { face: 1, bay: idx + 1 };                // Mặt trước: a→B1, b→B2, c→B3
   } else {
-    return { face: 2, bay: 6 - idx };  // d→Bay3, e→Bay2, f→Bay1
+    return { face: 2, bay: totalPositions - idx };    // Mặt sau (U ngược)
   }
 }
 
@@ -66,7 +73,17 @@ function loadData(): CampusData[] {
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet);
 
-      const shelves: ShelfRow[] = [];
+      // Bước 1: Parse raw data và nhóm theo rack number
+      interface RawShelf {
+        shelfId: number;
+        code: string;
+        deweyStart: number;
+        deweyEnd: number;
+        rackNumber: number;
+        letter: string;
+      }
+
+      const rawMap = new Map<number, RawShelf[]>();
 
       for (const row of rows) {
         const code = String(row['Code'] || '').trim().toLowerCase();
@@ -75,26 +92,37 @@ function loadData(): CampusData[] {
         const shelfId = Number(row['ShelfId'] || 0);
 
         if (!code) continue;
-
-        // Parse "10a" → rackNumber=10, letter="a"
         const match = code.match(/^(\d+)([a-f])$/i);
         if (!match) continue;
 
         const rackNumber = parseInt(match[1], 10);
         const letter = match[2].toLowerCase();
-        const { bay, face } = letterToBayFace(letter);
 
-        shelves.push({
-          shelfId,
-          code,
-          deweyStart,
-          deweyEnd,
-          campus,
-          rackNumber,
-          letter,
-          bay,
-          face,
-        });
+        if (!rawMap.has(rackNumber)) rawMap.set(rackNumber, []);
+        rawMap.get(rackNumber)!.push({ shelfId, code, deweyStart, deweyEnd, rackNumber, letter });
+      }
+
+      // Bước 2: Tính bay/face dựa trên ký tự max của mỗi kệ
+      const shelves: ShelfRow[] = [];
+
+      for (const [, raws] of rawMap) {
+        // Tìm ký tự lớn nhất: f→3bay, d→2bay, b→1bay
+        const maxLetter = raws.reduce((max, r) =>
+          r.letter > max ? r.letter : max, 'a');
+        for (const raw of raws) {
+          const { bay, face } = letterToBayFace(raw.letter, maxLetter);
+          shelves.push({
+            shelfId: raw.shelfId,
+            code: raw.code,
+            deweyStart: raw.deweyStart,
+            deweyEnd: raw.deweyEnd,
+            campus,
+            rackNumber: raw.rackNumber,
+            letter: raw.letter,
+            bay,
+            face,
+          });
+        }
       }
 
       // Nhóm theo rack number
@@ -106,10 +134,14 @@ function loadData(): CampusData[] {
 
       const racks: RackInfo[] = [...rackMap.entries()]
         .sort((a, b) => a[0] - b[0])
-        .map(([rackNumber, shelfList]) => ({
-          rackNumber,
-          shelves: shelfList.sort((a, b) => a.letter.localeCompare(b.letter)),
-        }));
+        .map(([rackNumber, shelfList]) => {
+          const uniqueBays = [...new Set(shelfList.map(s => s.bay))].sort((a, b) => a - b);
+          return {
+            rackNumber,
+            shelves: shelfList.sort((a, b) => a.letter.localeCompare(b.letter)),
+            bays: uniqueBays,
+          };
+        });
 
       campuses.push({ campus, racks, totalShelves: shelves.length });
     } catch (err) {

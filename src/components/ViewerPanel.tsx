@@ -2,14 +2,15 @@ import { Canvas } from '@react-three/fiber';
 import { MapControls } from '@react-three/drei';
 import { Suspense, useEffect, useState } from 'react';
 import BookshelfScene from './BookshelfScene';
-import type { SearchResult, RackInfo } from '../types';
+import type { SearchResult, RackInfo, ShelfInfo } from '../types';
 
 interface ViewerPanelProps {
   selectedResult: SearchResult | null;
   campus: string;
+  onBayClick?: (shelf: ShelfInfo) => void;
 }
 
-export default function ViewerPanel({ selectedResult, campus }: ViewerPanelProps) {
+export default function ViewerPanel({ selectedResult, campus, onBayClick }: ViewerPanelProps) {
   const [racks, setRacks] = useState<RackInfo[]>([]);
 
   // Fetch rack layout khi đổi campus
@@ -28,15 +29,24 @@ export default function ViewerPanel({ selectedResult, campus }: ViewerPanelProps
 
   const shelf = selectedResult?.shelf ?? null;
 
+  const handleSceneBayClick = (rackNumber: number, bay: number, face: number) => {
+    const rack = racks.find((r) => r.rackNumber === rackNumber);
+    if (!rack) return;
+    const clickedShelf = rack.shelves.find((s) => s.bay === bay && s.face === face);
+    if (clickedShelf && onBayClick) {
+      onBayClick(clickedShelf);
+    }
+  };
+
   return (
     <div className="viewer-panel">
       <Canvas
         className="viewer-canvas"
-        camera={{ position: [0, 18, 35], fov: 50 }}
+        camera={{ position: [20, 30, 20], fov: 50 }}
         shadows
       >
         <color attach="background" args={['#0a0e1a']} />
-        <fog attach="fog" args={['#0a0e1a', 30, 80]} />
+        <fog attach="fog" args={['#0a0e1a', 50, 200]} />
 
         <ambientLight intensity={0.4} />
         <directionalLight position={[15, 20, 10]} intensity={1} castShadow />
@@ -48,19 +58,21 @@ export default function ViewerPanel({ selectedResult, campus }: ViewerPanelProps
             highlightRack={shelf?.rackNumber ?? null}
             highlightBay={shelf?.bay ?? null}
             highlightFace={shelf?.face ?? null}
+            onBayClick={handleSceneBayClick}
           />
         </Suspense>
 
         {/* Sàn nhà */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
-          <planeGeometry args={[100, 100]} />
+          <planeGeometry args={[500, 500]} />
           <meshStandardMaterial color="#0d1220" />
         </mesh>
 
         <MapControls
           makeDefault
+          target={[0, 0, 0]}
           minDistance={3}
-          maxDistance={80}
+          maxDistance={150}
           maxPolarAngle={Math.PI / 2.1}
           enableDamping
           dampingFactor={0.08}
