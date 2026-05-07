@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import ViewerPanel from './components/ViewerPanel';
+import GuideOverlay from './components/GuideOverlay';
 import type { SearchResult, ShelfInfo } from './types';
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
         campus={campus}
         onBayClick={handleBayClick}
       />
+      <GuideOverlay />
     </div>
   );
 }
