@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import type { RackInfo } from '../types';
 import HighlightMarker from './HighlightMarker';
@@ -106,6 +107,26 @@ function Rack({
       {bays.map((b) => (
         <Bay key={b} bayIndex={b} mat={mat} rackNumber={rackNumber} onBayClick={onBayClick} />
       ))}
+
+      {/* Nhãn số kệ ở đầu dãy (phía ngoài) - Hình tròn xanh biển, số trắng */}
+      <group position={[-2.95, 4.5, -0.5]} rotation={[0, -Math.PI / 2, 0]}>
+        {/* Tấm bảng nền hình tròn */}
+        <mesh>
+          <circleGeometry args={[0.25, 32]} />
+          <meshBasicMaterial color="#3b82f6" />
+        </mesh>
+        {/* Chữ số kệ */}
+        <Text
+          position={[0, 0, 0.01]}
+          fontSize={0.25}
+          color="white"
+          fontWeight="bold"
+          anchorX="center"
+          anchorY="middle"
+        >
+          {`${rackNumber}`}
+        </Text>
+      </group>
     </group>
   );
 }
