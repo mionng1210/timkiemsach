@@ -1,4 +1,5 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
+import { useThree, useFrame } from '@react-three/fiber';
 import { Text, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import type { RackInfo, ShelfInfo } from '../types';
@@ -55,11 +56,11 @@ function Bay({
   onBayClick?: (rackNumber: number, bay: number, face: number) => void;
 }) {
   const offsetX = (bayIndex - 2) * 3;
-  
+
   // Tìm thông tin sách cho mặt trước và mặt sau của khoang này
   const face1Shelf = shelves.find(s => s.bay === bayIndex && s.face === 1);
   const face2Shelf = shelves.find(s => s.bay === bayIndex && s.face === 2);
-  
+
   const displayCode1 = face1Shelf ? face1Shelf.code.toUpperCase() : `BAY ${bayIndex}`;
   const displayCode2 = face2Shelf ? face2Shelf.code.toUpperCase() : `BAY ${bayIndex}`;
 
@@ -310,47 +311,93 @@ function EntranceArea({ position }: { position: [number, number, number] }) {
   );
 }
 
-function StudySet({ position }: { position: [number, number, number] }) {
+// Dùng InstancedMesh thuần Three.js để render toàn bộ bàn ghế trong 3 draw calls duy nhất
+function FurnitureInstances({
+  aislePositions,
+  wallRowPositions,
+}: {
+  aislePositions: [number, number, number][];
+  wallRowPositions: [number, number, number][];
+}) {
+  const tableHRef = useRef<THREE.InstancedMesh>(null);
+  const tableVRef = useRef<THREE.InstancedMesh>(null);
+  const chairRef = useRef<THREE.InstancedMesh>(null);
+
+  // Tính tổng số instance cần thiết
+  const chairOffsets = [-2.8, 0, 2.8];
+  const aisleChairsPerSet = chairOffsets.length * 2; // 2 hàng mỗi bộ
+  const wallChairsPerSet = chairOffsets.length;       // 1 hàng mỗi bộ
+  const totalTables = aislePositions.length + wallRowPositions.length;
+  const totalChairs = aislePositions.length * aisleChairsPerSet + wallRowPositions.length * wallChairsPerSet;
+
+  useEffect(() => {
+    const mat = new THREE.Matrix4();
+    const dummy = new THREE.Object3D();
+
+    // --- Bàn ngang (aislePositions) + Bàn dọc (wallRowPositions) ---
+    // Bàn ngang (tableH): chỉ aislePositions
+    if (tableHRef.current) {
+      aislePositions.forEach((pos, i) => {
+        dummy.position.set(pos[0], pos[1] + 0.75, pos[2]);
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        tableHRef.current!.setMatrixAt(i, dummy.matrix);
+      });
+      tableHRef.current.instanceMatrix.needsUpdate = true;
+    }
+
+    // Bàn dọc (tableV): chỉ wallRowPositions
+    if (tableVRef.current) {
+      wallRowPositions.forEach((pos, i) => {
+        dummy.position.set(pos[0], pos[1] + 0.75, pos[2]);
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        tableVRef.current!.setMatrixAt(i, dummy.matrix);
+      });
+      tableVRef.current.instanceMatrix.needsUpdate = true;
+    }
+
+    // --- Ghế ---
+    if (chairRef.current) {
+      let ci = 0;
+      aislePositions.forEach((pos) => {
+        chairOffsets.forEach((xOff) => {
+          dummy.position.set(pos[0] + xOff, pos[1] + 0.4, pos[2] + 0.85);
+          dummy.updateMatrix();
+          chairRef.current!.setMatrixAt(ci++, dummy.matrix);
+          dummy.position.set(pos[0] + xOff, pos[1] + 0.4, pos[2] - 0.85);
+          dummy.updateMatrix();
+          chairRef.current!.setMatrixAt(ci++, dummy.matrix);
+        });
+      });
+      wallRowPositions.forEach((pos) => {
+        chairOffsets.forEach((zOff) => {
+          dummy.position.set(pos[0] + 0.85, pos[1] + 0.4, pos[2] + zOff);
+          dummy.updateMatrix();
+          chairRef.current!.setMatrixAt(ci++, dummy.matrix);
+        });
+      });
+      chairRef.current.instanceMatrix.needsUpdate = true;
+    }
+  }, [aislePositions, wallRowPositions]);
+
+  if (totalTables === 0) return null;
+
   return (
-    <group position={position}>
-      {/* Bàn đã giảm 1/5 kích thước (dài 8, rộng 1.2) */}
-      <mesh position={[0, 0.75, 0]}>
+    <>
+      <instancedMesh ref={tableHRef} args={[undefined, undefined, aislePositions.length]} frustumCulled={false}>
         <boxGeometry args={[8, 0.05, 1.2]} />
         <meshLambertMaterial color="#8b4513" />
-      </mesh>
-      {/* 6 ghế ngồi (3 mỗi bên) */}
-      {[-2.8, 0, 2.8].map((xOffset, idx) => (
-        <group key={idx}>
-          <mesh position={[xOffset, 0.4, 0.85]}>
-            <boxGeometry args={[0.6, 0.8, 0.6]} />
-            <meshLambertMaterial color="#2c3e50" />
-          </mesh>
-          <mesh position={[xOffset, 0.4, -0.85]}>
-            <boxGeometry args={[0.6, 0.8, 0.6]} />
-            <meshLambertMaterial color="#2c3e50" />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
-
-function VerticalStudySet({ position }: { position: [number, number, number] }) {
-  return (
-    <group position={position}>
-      {/* Bàn dọc (theo trục Z) */}
-      <mesh position={[0, 0.75, 0]}>
+      </instancedMesh>
+      <instancedMesh ref={tableVRef} args={[undefined, undefined, wallRowPositions.length]} frustumCulled={false}>
         <boxGeometry args={[1.2, 0.05, 8]} />
         <meshLambertMaterial color="#8b4513" />
-      </mesh>
-      {/* Chỉ giữ hàng ghế bên phải (phía trong phòng), bỏ hàng ghế bên trái (sát tường) */}
-      {[-2.8, 0, 2.8].map((zOffset, idx) => (
-        <mesh key={idx} position={[0.85, 0.4, zOffset]}>
-          <boxGeometry args={[0.6, 0.8, 0.6]} />
-          <meshLambertMaterial color="#2c3e50" />
-        </mesh>
-      ))}
-    </group>
+      </instancedMesh>
+      <instancedMesh ref={chairRef} args={[undefined, undefined, totalChairs]} frustumCulled={false}>
+        <boxGeometry args={[0.6, 0.8, 0.6]} />
+        <meshLambertMaterial color="#2c3e50" />
+      </instancedMesh>
+    </>
   );
 }
 
@@ -416,7 +463,7 @@ export default function BookshelfScene({
   // Tạo đường dẫn (path) từ cửa ra vào tới kệ đang được highlight
   const pathWaypoints = useMemo(() => {
     if (campus !== 'Sai Gon' || highlightRack === null || highlightBay === null || highlightFace === null) return null;
-    
+
     const rack2 = rackPositions.find(r => r.rackNumber === 2);
     if (!rack2) return null;
 
@@ -430,11 +477,11 @@ export default function BookshelfScene({
 
     const startX = -34.6;
     const startZ = rack2.z + 10;
-    
+
     // Z để đi trước mặt quầy thủ thư
     const frontOfDeskZ = rack2.z + 7.5;
     // Hành lang chính giữa dãy kệ (x=0 tới -3) và dãy bàn học (x=-10 tới -6)
-    const mainCorridorX = -4.5; 
+    const mainCorridorX = -4.5;
 
     const path: PathWaypoint[] = [];
     path.push({ pos: new THREE.Vector3(startX, 0.05, startZ), msg: 'Cửa ra vào' });
@@ -496,15 +543,11 @@ export default function BookshelfScene({
           <LibrarianDesk position={features.deskPos} />
           <EntranceArea position={features.entrancePos} />
 
-          {/* Khu vực bàn ghế giữa các kệ */}
-          {features.aislePositions.map((pos, idx) => (
-            <StudySet key={`aisle-${idx}`} position={pos} />
-          ))}
-
-          {/* Khu vực bàn ghế sát tường (hướng dọc) */}
-          {features.wallRowPositions.map((pos, idx) => (
-            <VerticalStudySet key={`wall-${idx}`} position={pos} />
-          ))}
+          {/* Toàn bộ bàn ghế — chỉ 3 draw calls nhờ InstancedMesh */}
+          <FurnitureInstances
+            aislePositions={features.aislePositions}
+            wallRowPositions={features.wallRowPositions}
+          />
 
           {/* Đường dẫn tới kệ sách */}
           {pathWaypoints && (
