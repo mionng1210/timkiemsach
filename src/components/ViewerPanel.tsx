@@ -1,7 +1,7 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { MapControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import BookshelfScene, { type PathWaypoint } from './BookshelfScene';
 import type { SearchResult, RackInfo, ShelfInfo } from '../types';
 
@@ -62,7 +62,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick }: View
       const rack2Z = rack2Index !== -1 ? -(rack2Index - sorted.length / 2) * 4.0 : 0;
       const startZ = rack2Z + 10;
       const startX = -34.6;
-      
+
       return new THREE.Vector3((startX + shelfPos.x) / 2, shelfPos.y, (startZ + shelfPos.z) / 2);
     }
 
@@ -82,7 +82,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick }: View
     <div className="viewer-panel">
       <Canvas
         className="viewer-canvas"
-        camera={{ position: [-55, 60, 30], fov: 40 }}
+        camera={{ position: [-15, 8, 100], fov: 65 }}
         shadows
       >
         <color attach="background" args={['#ffffff']} />
@@ -131,13 +131,12 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick }: View
 
         {!isGuideMode && <FocusManager target={targetPos} isPathView={campus === 'Sai Gon' && !!shelf} />}
         {isGuideMode && guideWaypoints && (
-          <FirstPersonCamera 
-            waypoints={guideWaypoints} 
-            currentStep={currentGuideStep} 
+          <FirstPersonCamera
+            waypoints={guideWaypoints}
+            currentStep={currentGuideStep}
             finalLookAt={shelfPos}
           />
         )}
-        <CameraLimits />
       </Canvas>
 
       {/* Info overlay */}
@@ -204,8 +203,8 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick }: View
 
       {/* Guide UI Overlays */}
       {guideWaypoints && !isGuideMode && (
-        <button 
-          className="start-guide-btn" 
+        <button
+          className="start-guide-btn"
           onClick={() => { setIsGuideMode(true); setCurrentGuideStep(0); }}
           style={{ position: 'absolute', bottom: 120, left: '50%', transform: 'translateX(-50%)', padding: '12px 24px', background: '#3498db', color: 'white', border: 'none', borderRadius: 8, fontSize: 16, fontWeight: 'bold', cursor: 'pointer', zIndex: 10, boxShadow: '0 4px 6px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: 8 }}
         >
@@ -222,14 +221,14 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick }: View
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, width: '100%' }}>
-            <button 
+            <button
               onClick={() => setCurrentGuideStep(Math.max(0, currentGuideStep - 1))}
               disabled={currentGuideStep === 0}
               style={{ flex: 1, padding: '10px', background: currentGuideStep === 0 ? '#ecf0f1' : '#e67e22', color: currentGuideStep === 0 ? '#bdc3c7' : 'white', border: 'none', borderRadius: 6, cursor: currentGuideStep === 0 ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
             >
               ⬅️ Lùi lại
             </button>
-            <button 
+            <button
               onClick={() => setCurrentGuideStep(Math.min(guideWaypoints.length - 1, currentGuideStep + 1))}
               disabled={currentGuideStep === guideWaypoints.length - 1}
               style={{ flex: 1, padding: '10px', background: currentGuideStep === guideWaypoints.length - 1 ? '#ecf0f1' : '#2ecc71', color: currentGuideStep === guideWaypoints.length - 1 ? '#bdc3c7' : 'white', border: 'none', borderRadius: 6, cursor: currentGuideStep === guideWaypoints.length - 1 ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
@@ -237,7 +236,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick }: View
               Đi tiếp ➡️
             </button>
           </div>
-          <button 
+          <button
             onClick={() => setIsGuideMode(false)}
             style={{ width: '100%', padding: '10px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold' }}
           >
@@ -259,14 +258,16 @@ function FirstPersonCamera({
   finalLookAt: THREE.Vector3;
 }) {
   const { camera } = useThree();
+  const lerpStepRef = useRef(currentStep); // float, converges toward currentStep mỗi frame
+  const targetPos = useRef(new THREE.Vector3());
+  const lookAtPos = useRef(new THREE.Vector3());
+  const targetQuat = useRef(new THREE.Quaternion());
+  const origFovRef = useRef<number>((camera as any).fov ?? 40);
 
-  // Chuyển sang góc nhìn rộng (FOV 85) để dễ quan sát kệ sách trong không gian hẹp
   useEffect(() => {
-    const origFov = (camera as any).fov;
-    (camera as any).fov = 85;
-    camera.updateProjectionMatrix();
+    origFovRef.current = (camera as any).fov ?? 40;
     return () => {
-      (camera as any).fov = origFov;
+      (camera as any).fov = origFovRef.current;
       camera.updateProjectionMatrix();
     };
   }, [camera]);
@@ -274,46 +275,69 @@ function FirstPersonCamera({
   useFrame(() => {
     if (!waypoints || waypoints.length === 0) return;
 
-    const currentPoint = waypoints[currentStep].pos;
-    // Đặt camera ở độ cao tầm mắt
-    const targetPos = new THREE.Vector3(currentPoint.x, 3.5, currentPoint.z);
-    
-    // Ở bước gần cuối (nhìn vào lối đi), lùi camera ra xa (về phía âm X) một chút để bao quát hơn
-    if (currentStep === waypoints.length - 2) {
-      targetPos.x -= 1.3; // Lùi sát mép bàn học (-5.8) thay vì đứng giữa hành lang (-4.5)
+    // Lerp lerpStepRef về currentStep — đây là mấu chốt làm cả tiến lẫn lùi đều mượt
+    lerpStepRef.current += (currentStep - lerpStepRef.current) * 0.08;
+    const ls = lerpStepRef.current;
+
+    // Nội suy vị trí giữa 2 waypoints liền kề dựa trên ls (float)
+    const loIdx = Math.max(0, Math.min(waypoints.length - 1, Math.floor(ls)));
+    const hiIdx = Math.max(0, Math.min(waypoints.length - 1, Math.ceil(ls)));
+    const t = ls - loIdx; // 0..1 giữa 2 waypoints
+
+    const posLo = waypoints[loIdx].pos;
+    const posHi = waypoints[hiIdx].pos;
+
+    const tp = targetPos.current;
+    tp.set(
+      posLo.x + (posHi.x - posLo.x) * t,
+      3.5,
+      posLo.z + (posHi.z - posLo.z) * t
+    );
+
+    // Điều chỉnh cao độ / lùi ra ở gần bước cuối
+    if (ls >= waypoints.length - 2) {
+      const blend = Math.max(0, ls - (waypoints.length - 2)); // 0..1
+      tp.x -= 1.3 * blend;
     }
-    
-    // Ở bước cuối cùng (đứng trước kệ), đứng đối diện song song, hạ thấp trọng tâm và lùi sát ra mép kệ đối diện
-    if (currentStep === waypoints.length - 1) {
-      targetPos.y = 2.5;  // Hạ xuống ngang tầm giữa kệ
-      
-      // Lùi ra xa kệ hiện tại (về phía kệ đối diện)
-      // Nếu camera đang ở phía +Z so với kệ, ta lùi thêm về hướng +Z
-      const pushBackDir = Math.sign(targetPos.z - finalLookAt.z);
-      targetPos.z += pushBackDir * 1.0; 
+    if (ls >= waypoints.length - 1 - 0.01) {
+      tp.y = 2.5;
+      const pushBackDir = Math.sign(tp.z - finalLookAt.z);
+      tp.z += pushBackDir * 1.0;
     }
 
-    let lookAtPos = new THREE.Vector3();
-    
-    if (currentStep < waypoints.length - 1) {
-      const nextPoint = waypoints[currentStep + 1].pos;
-      lookAtPos.set(nextPoint.x, 3.5, nextPoint.z);
+    // lookAt: nhìn về waypoint tiếp theo theo hướng di chuyển
+    const lookIdx = Math.min(waypoints.length - 1, hiIdx + 1);
+    const lp = lookAtPos.current;
+    if (lookIdx < waypoints.length) {
+      lp.set(waypoints[lookIdx].pos.x, 3.5, waypoints[lookIdx].pos.z);
     } else {
-      lookAtPos.copy(finalLookAt);
+      lp.copy(finalLookAt);
+    }
+    if (ls >= waypoints.length - 1 - 0.1) {
+      lp.copy(finalLookAt);
     }
 
-    camera.position.lerp(targetPos, 0.05);
+    // Lerp vị trí camera
+    camera.position.lerp(tp, 0.07);
 
-    const currentQuat = camera.quaternion.clone();
-    camera.lookAt(lookAtPos);
-    const targetQuat = camera.quaternion.clone();
-    
-    camera.quaternion.copy(currentQuat);
-    camera.quaternion.slerp(targetQuat, 0.05);
+    // Lerp rotation mượt
+    const savedQuat = camera.quaternion.clone();
+    camera.lookAt(lp);
+    targetQuat.current.copy(camera.quaternion);
+    camera.quaternion.copy(savedQuat);
+    camera.quaternion.slerp(targetQuat.current, 0.07);
+
+    // Lerp FOV 40 → 85
+    const cam = camera as any;
+    if (cam.fov !== undefined && Math.abs(cam.fov - 85) > 0.1) {
+      cam.fov += (85 - cam.fov) * 0.08;
+      camera.updateProjectionMatrix();
+    }
   });
 
   return null;
 }
+
 
 function FocusManager({ target, isPathView }: { target: THREE.Vector3, isPathView: boolean }) {
   const { controls, camera } = useThree();
@@ -324,8 +348,8 @@ function FocusManager({ target, isPathView }: { target: THREE.Vector3, isPathVie
   useEffect(() => {
     setIsFocusing(true);
     if (isPathView) {
-      // Dịch camera ra xa và lên cao để nhìn bao quát toàn bộ đường đi
-      targetCamPos.set(target.x - 40, 60, target.z + 60);
+      // Thu nhỏ khoảng cách zoom-out: chỉ lùi nhẹ để thấy kệ rõ hơn
+      targetCamPos.set(target.x - 10, 20, target.z + 20);
     }
   }, [target, isPathView, targetCamPos]);
 
@@ -341,7 +365,7 @@ function FocusManager({ target, isPathView }: { target: THREE.Vector3, isPathVie
     if (controls && isFocusing) {
       const distance = (controls as any).target.distanceTo(target);
       const camDistance = isPathView ? camera.position.distanceTo(targetCamPos) : 0;
-      
+
       // Khi đã đến rất gần, dừng focus
       if (distance < 0.1 && camDistance < 1.0) {
         setIsFocusing(false);
@@ -357,22 +381,3 @@ function FocusManager({ target, isPathView }: { target: THREE.Vector3, isPathVie
 
   return null;
 }
-
-function CameraLimits() {
-  const { camera, controls } = useThree();
-  useFrame(() => {
-    // Giới hạn camera không cho đi xuyên qua tường (x = 6.2)
-    // Để một khoảng cách an toàn (margin) là 5.5
-    if (camera.position.x > 5.5) {
-      camera.position.x = 5.5;
-    }
-
-    // Đồng thời giới hạn cả điểm nhìn (target) để tránh kéo quá đà
-    if (controls && (controls as any).target.x > 6.0) {
-      (controls as any).target.x = 6.0;
-      (controls as any).update();
-    }
-  });
-  return null;
-}
-
