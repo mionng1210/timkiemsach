@@ -85,14 +85,14 @@ function Bay({
       {face1Shelf && (
         <group position={[1.67, 5.0, 0.015]}>
           <mesh position={[0, 0, 0]}>
-            <planeGeometry args={[0.85, 0.45]} />
-            <meshBasicMaterial color="#3498db" />
+            <planeGeometry args={[0.9, 0.5]} />
+            <meshBasicMaterial color="#4f46e5" />
           </mesh>
           <mesh position={[0, 0, 0.005]}>
-            <planeGeometry args={[0.8, 0.4]} />
-            <meshBasicMaterial color="#ecf0f1" />
+            <planeGeometry args={[0.84, 0.44]} />
+            <meshBasicMaterial color="#ffffff" />
           </mesh>
-          <Text position={[0, 0, 0.015]} fontSize={0.22} color="#2980b9" fontWeight="bold" anchorX="center" anchorY="middle">
+          <Text position={[0, 0, 0.015]} fontSize={0.2} color="#1e1b4b" fontWeight="700" anchorX="center" anchorY="middle" letterSpacing={0.05}>
             {displayCode1}
           </Text>
         </group>
@@ -102,14 +102,14 @@ function Bay({
       {face2Shelf && (
         <group position={[1.67, 5.0, -0.995]} rotation={[0, Math.PI, 0]}>
           <mesh position={[0, 0, 0]}>
-            <planeGeometry args={[0.85, 0.45]} />
-            <meshBasicMaterial color="#3498db" />
+            <planeGeometry args={[0.9, 0.5]} />
+            <meshBasicMaterial color="#4f46e5" />
           </mesh>
           <mesh position={[0, 0, 0.005]}>
-            <planeGeometry args={[0.8, 0.4]} />
-            <meshBasicMaterial color="#ecf0f1" />
+            <planeGeometry args={[0.84, 0.44]} />
+            <meshBasicMaterial color="#ffffff" />
           </mesh>
-          <Text position={[0, 0, 0.015]} fontSize={0.22} color="#2980b9" fontWeight="bold" anchorX="center" anchorY="middle">
+          <Text position={[0, 0, 0.015]} fontSize={0.2} color="#1e1b4b" fontWeight="700" anchorX="center" anchorY="middle" letterSpacing={0.05}>
             {displayCode2}
           </Text>
         </group>
@@ -119,11 +119,15 @@ function Bay({
       {face1Shelf && (
         <group position={[1.67, 2.05, 0.015]}>
           <mesh>
-            <planeGeometry args={[1.5, 0.25]} />
-            <meshBasicMaterial color="#f1c40f" />
+            <planeGeometry args={[1.6, 0.3]} />
+            <meshBasicMaterial color="#3498db" />
           </mesh>
-          <Text position={[0, 0, 0.01]} fontSize={0.14} color="#2c3e50" fontWeight="bold" anchorX="center" anchorY="middle">
-            {`${face1Shelf.deweyStart.toFixed(3)} ➡️ ${face1Shelf.deweyEnd.toFixed(3)}`}
+          <mesh position={[0, 0, 0.005]}>
+            <planeGeometry args={[1.54, 0.24]} />
+            <meshBasicMaterial color="white" />
+          </mesh>
+          <Text position={[0, 0, 0.01]} fontSize={0.13} color="#2c3e50" fontWeight="600" anchorX="center" anchorY="middle">
+            {`${face1Shelf.deweyStart.toFixed(3)} – ${face1Shelf.deweyEnd.toFixed(3)}`}
           </Text>
         </group>
       )}
@@ -132,11 +136,15 @@ function Bay({
       {face2Shelf && (
         <group position={[1.67, 2.05, -0.995]} rotation={[0, Math.PI, 0]}>
           <mesh>
-            <planeGeometry args={[1.5, 0.25]} />
-            <meshBasicMaterial color="#f1c40f" />
+            <planeGeometry args={[1.6, 0.3]} />
+            <meshBasicMaterial color="#3498db" />
           </mesh>
-          <Text position={[0, 0, 0.01]} fontSize={0.14} color="#2c3e50" fontWeight="bold" anchorX="center" anchorY="middle">
-            {`${face2Shelf.deweyStart.toFixed(3)} ➡️ ${face2Shelf.deweyEnd.toFixed(3)}`}
+          <mesh position={[0, 0, 0.005]}>
+            <planeGeometry args={[1.54, 0.24]} />
+            <meshBasicMaterial color="white" />
+          </mesh>
+          <Text position={[0, 0, 0.01]} fontSize={0.13} color="#2c3e50" fontWeight="600" anchorX="center" anchorY="middle">
+            {`${face2Shelf.deweyStart.toFixed(3)} – ${face2Shelf.deweyEnd.toFixed(3)}`}
           </Text>
         </group>
       )}
@@ -202,15 +210,19 @@ function Rack({
       <group position={[-2.95, 4.5, -0.5]} rotation={[0, -Math.PI / 2, 0]}>
         {/* Tấm bảng nền hình tròn */}
         <mesh>
-          <circleGeometry args={[0.25, 32]} />
-          <meshBasicMaterial color="#3b82f6" />
+          <circleGeometry args={[0.28, 32]} />
+          <meshBasicMaterial color="#4f46e5" />
+        </mesh>
+        <mesh position={[0, 0, 0.005]}>
+          <circleGeometry args={[0.24, 32]} />
+          <meshBasicMaterial color="#ffffff" />
         </mesh>
         {/* Chữ số kệ */}
         <Text
           position={[0, 0, 0.01]}
-          fontSize={0.25}
-          color="white"
-          fontWeight="bold"
+          fontSize={0.24}
+          color="#1e1b4b"
+          fontWeight="800"
           anchorX="center"
           anchorY="middle"
         >
