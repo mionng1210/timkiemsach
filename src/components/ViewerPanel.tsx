@@ -9,9 +9,10 @@ interface ViewerPanelProps {
   selectedResult: SearchResult | null;
   campus: string;
   onBayClick?: (shelf: ShelfInfo) => void;
+  onGuideModeChange?: (isGuideMode: boolean) => void;
 }
 
-export default function ViewerPanel({ selectedResult, campus, onBayClick }: ViewerPanelProps) {
+export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuideModeChange }: ViewerPanelProps) {
   const [racks, setRacks] = useState<RackInfo[]>([]);
   const [guideWaypoints, setGuideWaypoints] = useState<PathWaypoint[] | null>(null);
   const [isGuideMode, setIsGuideMode] = useState(false);
@@ -20,9 +21,10 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick }: View
   // Reset guide khi chọn kệ khác hoặc đổi campus
   useEffect(() => {
     setIsGuideMode(false);
+    onGuideModeChange?.(false);
     setCurrentGuideStep(0);
     setGuideWaypoints(null);
-  }, [selectedResult, campus]);
+  }, [selectedResult, campus, onGuideModeChange]);
 
   // Fetch rack layout khi đổi campus
   useEffect(() => {
@@ -140,7 +142,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick }: View
       </Canvas>
 
       {/* Info overlay */}
-      {selectedResult && (
+      {selectedResult && !isGuideMode && (
         <div className="viewer-info-overlay">
           <div className="info-card">
             <div className="info-card-title">Vị trí sách</div>
@@ -172,12 +174,22 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick }: View
               <span className="info-label">Cơ sở</span>
               <span className="info-value">{selectedResult.campus}</span>
             </div>
+
+            {/* Start Guide Button inside Info Card */}
+            {guideWaypoints && (
+              <button
+                className="start-guide-btn-inline"
+                onClick={() => { setIsGuideMode(true); onGuideModeChange?.(true); setCurrentGuideStep(0); }}
+              >
+                <span>🚶‍♂️</span> Bắt đầu hướng dẫn đi
+              </button>
+            )}
           </div>
         </div>
       )}
 
       {/* Bay label at bottom */}
-      {selectedResult && (
+      {selectedResult && !isGuideMode && (
         <div className="bay-label-3d">
           <div className="bay-number">Kệ {shelf!.rackNumber}</div>
           <div className="bay-desc">
@@ -202,43 +214,34 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick }: View
       )}
 
       {/* Guide UI Overlays */}
-      {guideWaypoints && !isGuideMode && (
-        <button
-          className="start-guide-btn"
-          onClick={() => { setIsGuideMode(true); setCurrentGuideStep(0); }}
-          style={{ position: 'absolute', bottom: 120, left: '50%', transform: 'translateX(-50%)', padding: '12px 24px', background: '#3498db', color: 'white', border: 'none', borderRadius: 8, fontSize: 16, fontWeight: 'bold', cursor: 'pointer', zIndex: 10, boxShadow: '0 4px 6px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: 8 }}
-        >
-          <span>🚶‍♂️</span> Bắt đầu hướng dẫn đi
-        </button>
-      )}
 
       {isGuideMode && guideWaypoints && (
-        <div className="guide-controls-overlay" style={{ position: 'absolute', bottom: 40, left: '50%', transform: 'translateX(-50%)', background: 'white', padding: 20, borderRadius: 12, boxShadow: '0 10px 25px rgba(0,0,0,0.2)', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 15, minWidth: 320 }}>
-          <div style={{ fontWeight: 'bold', fontSize: 18, color: '#2c3e50', textAlign: 'center' }}>
+        <div className="guide-controls-overlay">
+          <div className="guide-step-info">
             Bước {currentGuideStep + 1} / {guideWaypoints.length}
-            <div style={{ fontSize: 15, fontWeight: 'normal', color: '#e67e22', marginTop: 6, padding: '4px 8px', backgroundColor: '#fdf2e9', borderRadius: 4 }}>
+            <div className="guide-step-msg">
               {guideWaypoints[currentGuideStep].msg}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+          <div className="guide-nav-btns">
             <button
+              className="guide-btn guide-btn-back"
               onClick={() => setCurrentGuideStep(Math.max(0, currentGuideStep - 1))}
               disabled={currentGuideStep === 0}
-              style={{ flex: 1, padding: '10px', background: currentGuideStep === 0 ? '#ecf0f1' : '#e67e22', color: currentGuideStep === 0 ? '#bdc3c7' : 'white', border: 'none', borderRadius: 6, cursor: currentGuideStep === 0 ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
             >
               ⬅️ Lùi lại
             </button>
             <button
+              className="guide-btn guide-btn-next"
               onClick={() => setCurrentGuideStep(Math.min(guideWaypoints.length - 1, currentGuideStep + 1))}
               disabled={currentGuideStep === guideWaypoints.length - 1}
-              style={{ flex: 1, padding: '10px', background: currentGuideStep === guideWaypoints.length - 1 ? '#ecf0f1' : '#2ecc71', color: currentGuideStep === guideWaypoints.length - 1 ? '#bdc3c7' : 'white', border: 'none', borderRadius: 6, cursor: currentGuideStep === guideWaypoints.length - 1 ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
             >
               Đi tiếp ➡️
             </button>
           </div>
           <button
-            onClick={() => setIsGuideMode(false)}
-            style={{ width: '100%', padding: '10px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold' }}
+            className="guide-btn guide-btn-exit"
+            onClick={() => { setIsGuideMode(false); onGuideModeChange?.(false); }}
           >
             ❌ Thoát hướng dẫn
           </button>
