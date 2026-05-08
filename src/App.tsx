@@ -7,10 +7,14 @@ import type { SearchResult, ShelfInfo } from './types';
 export default function App() {
   const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null);
   const [campus, setCampus] = useState('Thu Duc');
+  const [mobileView, setMobileView] = useState<'sidebar' | '3d'>('sidebar');
+  const [isGuideMode, setIsGuideMode] = useState(false);
 
   const handleResultSelect = useCallback((result: SearchResult) => {
     setSelectedResult(result);
     setCampus(result.campus);
+    // Tự động chuyển sang 3D khi chọn kết quả trên mobile
+    setMobileView('3d');
   }, []);
 
   const handleCampusChange = useCallback((newCampus: string) => {
@@ -24,7 +28,7 @@ export default function App() {
   }, [campus]);
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout mobile-view-${mobileView}`}>
       <Sidebar
         onResultSelect={handleResultSelect}
         selectedResult={selectedResult}
@@ -35,8 +39,20 @@ export default function App() {
         selectedResult={selectedResult}
         campus={campus}
         onBayClick={handleBayClick}
+        onGuideModeChange={setIsGuideMode}
       />
       <GuideOverlay />
+
+      {/* Nút chuyển đổi giữa Sidebar và 3D trên mobile */}
+      {!isGuideMode && (
+        <button
+          className="mobile-toggle-btn"
+          onClick={() => setMobileView(mobileView === 'sidebar' ? '3d' : 'sidebar')}
+          aria-label={mobileView === 'sidebar' ? 'Xem mô hình 3D' : 'Tìm kiếm sách'}
+        >
+          {mobileView === 'sidebar' ? '🏗️ Xem 3D' : '🔍 Tìm kiếm'}
+        </button>
+      )}
     </div>
   );
 }

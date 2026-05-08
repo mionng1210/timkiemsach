@@ -507,20 +507,478 @@ html, body, #root {
   box-shadow: var(--shadow-md);
 }
 
-/* ===== Responsive ===== */
-@media (max-width: 900px) {
-  .app-layout {
-    flex-direction: column;
-  }
+/* ===== Start Guide Button (Inline in Info Card) ===== */
+.start-guide-btn-inline {
+  width: 100%;
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font);
+  transition: var(--transition);
+}
+.start-guide-btn-inline:hover {
+  background: #3b6ae0;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px var(--accent-glow);
+}
+
+/* ===== Guide Controls Overlay ===== */
+.guide-controls-overlay {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  min-width: 320px;
+  max-width: 90vw;
+}
+
+.guide-step-info {
+  font-weight: bold;
+  font-size: 18px;
+  color: #2c3e50;
+  text-align: center;
+}
+
+.guide-step-msg {
+  font-size: 15px;
+  font-weight: normal;
+  color: #e67e22;
+  margin-top: 6px;
+  padding: 4px 8px;
+  background-color: #fdf2e9;
+  border-radius: 4px;
+}
+
+.guide-nav-btns {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.guide-btn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 14px;
+}
+
+.guide-btn:disabled {
+  background: #ecf0f1 !important;
+  color: #bdc3c7 !important;
+  cursor: not-allowed;
+}
+
+.guide-btn-back {
+  background: #e67e22;
+  color: white;
+}
+
+.guide-btn-next {
+  background: #2ecc71;
+  color: white;
+}
+
+.guide-btn-exit {
+  width: 100%;
+  background: #e74c3c;
+  color: white;
+}
+
+/* ===== Mobile Toggle Button ===== */
+.mobile-toggle-btn {
+  display: none; /* Ẩn trên desktop */
+}
+
+/* ===== Responsive — Tablet (≤1024px) ===== */
+@media (max-width: 1024px) {
   .sidebar {
-    width: 100%;
-    min-width: 100%;
-    height: 50vh;
+    width: 320px;
+    min-width: 320px;
   }
-  .viewer-panel {
-    height: 50vh;
+
+  .sidebar-header {
+    padding: 16px 16px 0;
+  }
+
+  .results-section {
+    padding: 0 16px 16px;
+  }
+
+  .info-card {
+    min-width: 220px;
+    padding: 16px;
+  }
+
+  .info-card-title {
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+
+  .info-row {
+    font-size: 12px;
+    padding: 6px 0;
+  }
+
+  .bay-label-3d {
+    padding: 10px 20px;
+    gap: 10px;
+  }
+
+  .bay-label-3d .bay-number {
+    font-size: 18px;
+  }
+
+  .guide-modal {
+    padding: 28px;
   }
 }
+
+/* ===== Responsive — Mobile (≤768px) ===== */
+@media (max-width: 768px) {
+  .app-layout {
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* Trên mobile, chỉ 1 panel hiển thị (sidebar hoặc 3D) */
+  .app-layout .sidebar {
+    width: 100%;
+    min-width: 100%;
+    height: 100vh;
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    transition: transform 0.35s ease, opacity 0.35s ease;
+  }
+
+  .app-layout .viewer-panel {
+    width: 100%;
+    height: 100vh;
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+  }
+
+  /* Khi đang xem 3D: ẩn sidebar */
+  .app-layout.mobile-view-3d .sidebar {
+    transform: translateX(-100%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* Khi đang xem sidebar: ẩn viewer (giữ render cho 3D) */
+  .app-layout.mobile-view-sidebar .viewer-panel {
+    visibility: hidden;
+  }
+
+  .mobile-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, var(--accent), #7c3aed);
+    color: white;
+    border: none;
+    border-radius: 50px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(74, 125, 255, 0.4);
+    font-family: var(--font);
+    animation: fadeSlideIn 0.3s ease;
+  }
+
+  .mobile-toggle-btn:active {
+    transform: scale(0.95);
+  }
+
+  /* Sidebar nội dung co gọn */
+  .sidebar-header {
+    padding: 16px 16px 0;
+  }
+
+  .sidebar-logo {
+    margin-bottom: 16px;
+  }
+
+  .sidebar-logo-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+
+  .sidebar-logo h1 {
+    font-size: 16px;
+  }
+
+  .results-section {
+    padding: 0 16px 80px; /* Thêm padding dưới cho nút toggle */
+  }
+
+  .search-box input {
+    padding: 12px 16px 12px 42px;
+    font-size: 14px;
+  }
+
+  .campus-filter {
+    margin-bottom: 16px;
+  }
+
+  .campus-btn {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  /* Info overlay → bottom sheet style */
+  .viewer-info-overlay {
+    top: auto;
+    bottom: 70px;
+    right: 12px;
+    left: 12px;
+  }
+
+  .info-card {
+    min-width: auto;
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+  }
+
+  .info-card-title {
+    font-size: 11px;
+    margin-bottom: 10px;
+  }
+
+  .info-row {
+    font-size: 12px;
+    padding: 5px 0;
+  }
+
+  .info-value.highlight {
+    font-size: 14px;
+  }
+
+  /* Bay label */
+  .bay-label-3d {
+    display: none; /* Hide on mobile to save space, info is in the card */
+  }
+
+  /* Rack counter */
+  .rack-counter {
+    top: 12px;
+    left: 12px;
+    padding: 8px 12px;
+    font-size: 11px;
+  }
+
+  /* Guide controls */
+  .start-guide-btn-inline {
+    padding: 10px;
+    font-size: 14px;
+  }
+
+  .guide-controls-overlay {
+    bottom: 20px;
+    padding: 14px;
+    min-width: auto;
+    width: calc(100% - 24px);
+    max-width: 400px;
+    gap: 10px;
+  }
+
+  .guide-step-info {
+    font-size: 15px;
+  }
+
+  .guide-step-msg {
+    font-size: 13px;
+  }
+
+  .guide-btn {
+    padding: 10px 8px;
+    font-size: 13px;
+  }
+
+  /* Guide overlay modal */
+  .guide-modal {
+    padding: 24px;
+    max-width: calc(100vw - 40px);
+  }
+
+  .guide-header h2 {
+    font-size: 20px;
+  }
+
+  .guide-icon {
+    font-size: 36px;
+    margin-bottom: 12px;
+  }
+
+  .guide-step {
+    gap: 12px;
+  }
+
+  .step-num {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    font-size: 12px;
+  }
+
+  .step-content h4 {
+    font-size: 14px;
+  }
+
+  .step-content p {
+    font-size: 12px;
+  }
+
+  /* Help button */
+  .help-btn {
+    top: 12px;
+    right: 12px;
+    bottom: auto;
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
+  }
+
+  /* Empty state on 3D panel */
+  .empty-state {
+    padding: 20px;
+  }
+
+  .empty-state-icon {
+    font-size: 40px;
+  }
+
+  .empty-state h3 {
+    font-size: 16px;
+  }
+
+  .empty-state p {
+    font-size: 12px;
+  }
+}
+
+/* ===== Responsive — Small Mobile (≤480px) ===== */
+@media (max-width: 480px) {
+  .sidebar-logo h1 {
+    font-size: 14px;
+  }
+
+  .sidebar-logo p {
+    font-size: 10px;
+  }
+
+  .search-box input {
+    padding: 10px 14px 10px 38px;
+    font-size: 13px;
+  }
+
+  .search-icon {
+    font-size: 16px;
+    left: 12px;
+  }
+
+  .book-card {
+    padding: 12px;
+  }
+
+  .book-title {
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+
+  .book-subtitle {
+    font-size: 11px;
+  }
+
+  .book-badge {
+    padding: 3px 8px;
+    font-size: 10px;
+  }
+
+  .mobile-toggle-btn {
+    padding: 10px 16px;
+    font-size: 13px;
+    bottom: 16px;
+  }
+
+  .guide-controls-overlay {
+    width: calc(100% - 16px);
+    padding: 12px;
+    border-radius: 10px;
+    bottom: 12px;
+  }
+
+  .guide-step-info {
+    font-size: 14px;
+  }
+
+  .guide-step-msg {
+    font-size: 12px;
+  }
+
+  .guide-nav-btns {
+    gap: 6px;
+  }
+
+  .guide-btn {
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+
+  .info-card {
+    padding: 12px;
+  }
+
+  .info-row {
+    font-size: 11px;
+  }
+
+  .bay-label-3d {
+    padding: 6px 12px;
+  }
+
+  .bay-label-3d .bay-number {
+    font-size: 14px;
+  }
+
+  .rack-counter {
+    font-size: 10px;
+    padding: 6px 10px;
+  }
+}
+
 /* ===== Guide Overlay ===== */
 .help-btn {
   position: absolute;
