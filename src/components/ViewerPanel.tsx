@@ -44,11 +44,14 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
 
   const shelfPos = useMemo(() => {
     if (!shelf || racks.length === 0) return new THREE.Vector3(-15, 0, -30);
-    const sorted = [...racks].sort((a, b) => a.rackNumber - b.rackNumber);
+    const sorted = [...racks].sort((a, b) => {
+      if (campus === 'Thu Duc') return b.rackNumber - a.rackNumber;
+      return a.rackNumber - b.rackNumber;
+    });
     const index = sorted.findIndex((r) => r.rackNumber === shelf.rackNumber);
     if (index === -1) return new THREE.Vector3(0, 0, 0);
 
-    const x = (shelf.bay - 2) * 3 + 1.65;
+    const x = campus === 'Thu Duc' ? (2 - shelf.bay) * 3 + 1.65 : (shelf.bay - 2) * 3 + 1.65;
     const y = 2.5;
     const z = -(index - sorted.length / 2) * 4.0; // ROW_SPACING_Z = 4.0
     return new THREE.Vector3(x, y, z);
@@ -84,7 +87,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     <div className="viewer-panel">
       <Canvas
         className="viewer-canvas"
-        camera={{ position: [-15, 8, 100], fov: 65 }}
+        camera={{ position: [-60, 25, 150], fov: 65 }}
         shadows
       >
         <color attach="background" args={['#ffffff']} />
@@ -112,8 +115,8 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           <meshStandardMaterial color="#f8f9fa" />
         </mesh>
 
-        {/* Tường phía sau */}
-        <mesh position={[6.2, 15, 0]} rotation={[0, -Math.PI / 2, 0]}>
+        {/* Tường phía sau - Dời ra xa để không che bàn ghế bên trái */}
+        <mesh position={[100, 15, 0]} rotation={[0, -Math.PI / 2, 0]}>
           <planeGeometry args={[600, 60]} />
           <meshStandardMaterial color="#f1f3f5" />
         </mesh>
@@ -131,7 +134,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           />
         )}
 
-        {!isGuideMode && <FocusManager target={targetPos} isPathView={campus === 'Sai Gon' && !!shelf} />}
+        {!isGuideMode && <FocusManager target={targetPos} isPathView={!!shelf} campus={campus} highlightFace={shelf?.face ?? null} />}
         {isGuideMode && guideWaypoints && (
           <FirstPersonCamera
             waypoints={guideWaypoints}
@@ -342,7 +345,7 @@ function FirstPersonCamera({
 }
 
 
-function FocusManager({ target, isPathView }: { target: THREE.Vector3, isPathView: boolean }) {
+function FocusManager({ target, isPathView, campus, highlightFace }: { target: THREE.Vector3, isPathView: boolean, campus: string, highlightFace: number | null }) {
   const { controls, camera } = useThree();
   const [isFocusing, setIsFocusing] = useState(false);
   const targetCamPos = useMemo(() => new THREE.Vector3(), []);
@@ -351,10 +354,15 @@ function FocusManager({ target, isPathView }: { target: THREE.Vector3, isPathVie
   useEffect(() => {
     setIsFocusing(true);
     if (isPathView) {
-      // Thu nhỏ khoảng cách zoom-out: chỉ lùi nhẹ để thấy kệ rõ hơn
-      targetCamPos.set(target.x - 10, 20, target.z + 20);
+      if (campus === 'Thu Duc') {
+        // Góc nhìn rộng cố định nhưng gần hơn một chút để thấy rõ chi tiết
+        targetCamPos.set(-60, 30, 70);
+      } else {
+        // Sài Gòn: Kệ xếp dọc nên zoom từ góc chéo
+        targetCamPos.set(target.x - 10, 20, target.z + 20);
+      }
     }
-  }, [target, isPathView, targetCamPos]);
+  }, [target, isPathView, targetCamPos, campus]);
 
   // Nếu người dùng bắt đầu tương tác, ngừng tự động focus để tránh "giằng co"
   useEffect(() => {
@@ -373,9 +381,17 @@ function FocusManager({ target, isPathView }: { target: THREE.Vector3, isPathVie
       if (distance < 0.1 && camDistance < 1.0) {
         setIsFocusing(false);
       } else {
-        (controls as any).target.lerp(target, 0.05);
-        if (isPathView) {
+        if (campus === 'Thu Duc') {
+          // Thủ Đức: Luôn về góc nhìn rộng cố định bao quát toàn sảnh (như screenshot 10:23 AM)
+          const roomCenter = new THREE.Vector3(-25, 0, 30);
+          (controls as any).target.lerp(roomCenter, 0.05);
           camera.position.lerp(targetCamPos, 0.05);
+        } else {
+          // Sài Gòn: Zoom vào từng kệ
+          (controls as any).target.lerp(target, 0.05);
+          if (isPathView) {
+            camera.position.lerp(targetCamPos, 0.05);
+          }
         }
         (controls as any).update();
       }
