@@ -52,6 +52,17 @@ function letterToBayFace(letter: string, maxLetter: string): { bay: number; face
   }
 }
 
+// ===== Thuật toán Thu Đức (Mặt sau A-F, Mặt trước G-L) =====
+function getBayFaceForThuDuc(letter: string): { bay: number; face: number } {
+  const code = letter.toLowerCase().charCodeAt(0);
+  if (code >= 97 && code <= 102) { // a-f
+    return { face: 2, bay: code - 96 }; // a=1, b=2, ..., f=6 (Mặt sau)
+  } else if (code >= 103 && code <= 108) { // g-l
+    return { face: 1, bay: code - 102 }; // g=1, h=2, ..., l=6 (Mặt trước)
+  }
+  return { face: 1, bay: 1 };
+}
+
 // ===== Cache =====
 let cachedCampuses: CampusData[] | null = null;
 
@@ -92,7 +103,7 @@ function loadData(): CampusData[] {
         const shelfId = Number(row['ShelfId'] || 0);
 
         if (!code) continue;
-        const match = code.match(/^(\d+)([a-f])$/i);
+        const match = code.match(/^(\d+)([a-l])$/i);
         if (!match) continue;
 
         const rackNumber = parseInt(match[1], 10);
@@ -110,7 +121,9 @@ function loadData(): CampusData[] {
         const maxLetter = raws.reduce((max, r) =>
           r.letter > max ? r.letter : max, 'a');
         for (const raw of raws) {
-          const { bay, face } = letterToBayFace(raw.letter, maxLetter);
+          const { bay, face } = (campus === 'Thu Duc')
+            ? getBayFaceForThuDuc(raw.letter)
+            : letterToBayFace(raw.letter, maxLetter);
           shelves.push({
             shelfId: raw.shelfId,
             code: raw.code,
@@ -135,7 +148,9 @@ function loadData(): CampusData[] {
       const racks: RackInfo[] = [...rackMap.entries()]
         .sort((a, b) => a[0] - b[0])
         .map(([rackNumber, shelfList]) => {
-          const uniqueBays = [...new Set(shelfList.map(s => s.bay))].sort((a, b) => a - b);
+          const uniqueBays = (campus === 'Thu Duc')
+            ? [1, 2, 3, 4, 5, 6]
+            : [...new Set(shelfList.map(s => s.bay))].sort((a, b) => a - b);
           return {
             rackNumber,
             shelves: shelfList.sort((a, b) => a.letter.localeCompare(b.letter)),
