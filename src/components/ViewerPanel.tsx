@@ -51,11 +51,13 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     const index = sorted.findIndex((r) => r.rackNumber === shelf.rackNumber);
     if (index === -1) return new THREE.Vector3(0, 0, 0);
 
-    const x = campus === 'Thu Duc' ? (2 - shelf.bay) * 3 + 1.65 : (shelf.bay - 2) * 3 + 1.65;
+    const x = campus === 'Thu Duc' 
+      ? -4.5 + (shelf.bay - 3.5) * 3 + 1.65 
+      : (shelf.bay - 2) * 3 + 1.65;
     const y = 2.5;
     const z = -(index - sorted.length / 2) * 4.0; // ROW_SPACING_Z = 4.0
     return new THREE.Vector3(x, y, z);
-  }, [shelf, racks]);
+  }, [shelf, racks, campus]);
 
   const targetPos = useMemo(() => {
     if (!shelf || racks.length === 0) return new THREE.Vector3(-15, 0, -30);
@@ -69,6 +71,11 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       const startX = -34.6;
 
       return new THREE.Vector3((startX + shelfPos.x) / 2, shelfPos.y, (startZ + shelfPos.z) / 2);
+    }
+
+    if (campus === 'Thu Duc') {
+      // Góc nhìn tổng quan từ cửa thang máy cho Thủ Đức để thấy toàn bộ đường đi
+      return new THREE.Vector3(-45, 25, 45);
     }
 
     return shelfPos;
@@ -140,6 +147,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
             waypoints={guideWaypoints}
             currentStep={currentGuideStep}
             finalLookAt={shelfPos}
+            campus={campus}
           />
         )}
       </Canvas>
@@ -257,11 +265,13 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
 function FirstPersonCamera({
   waypoints,
   currentStep,
-  finalLookAt
+  finalLookAt,
+  campus
 }: {
   waypoints: PathWaypoint[];
   currentStep: number;
   finalLookAt: THREE.Vector3;
+  campus: string;
 }) {
   const { camera } = useThree();
   const lerpStepRef = useRef(currentStep); // float, converges toward currentStep mỗi frame
@@ -282,7 +292,7 @@ function FirstPersonCamera({
     if (!waypoints || waypoints.length === 0) return;
 
     // Lerp lerpStepRef về currentStep — đây là mấu chốt làm cả tiến lẫn lùi đều mượt
-    lerpStepRef.current += (currentStep - lerpStepRef.current) * 0.08;
+    lerpStepRef.current += (currentStep - lerpStepRef.current) * 0.03;
     const ls = lerpStepRef.current;
 
     // Nội suy vị trí giữa 2 waypoints liền kề dựa trên ls (float)
@@ -303,23 +313,46 @@ function FirstPersonCamera({
     // Điều chỉnh cao độ / lùi ra ở gần bước cuối
     if (ls >= waypoints.length - 2) {
       const blend = Math.max(0, ls - (waypoints.length - 2)); // 0..1
-      tp.x -= 1.3 * blend;
-    }
-    if (ls >= waypoints.length - 1 - 0.01) {
-      tp.y = 2.5;
-      const pushBackDir = Math.sign(tp.z - finalLookAt.z);
-      tp.z += pushBackDir * 1.0;
+      if (campus === 'Thu Duc') {
+        // Thu Duc: Lùi nhẹ theo X sớm hơn để bao quát
+        tp.x -= 1.5 * blend;
+      }
     }
 
-    // lookAt: nhìn về waypoint tiếp theo theo hướng di chuyển
-    const lookIdx = Math.min(waypoints.length - 1, hiIdx + 1);
+    if (ls >= waypoints.length - 1 - 0.01) {
+      tp.y = 2.8; 
+      if (campus === 'Sai Gon') {
+        tp.x -= 0.7;
+        tp.y = 2.5;
+        const pushBackDir = Math.sign(tp.z - finalLookAt.z);
+        tp.z += pushBackDir * 1.2;
+      } else {
+        // Thu Duc: Zoom chéo nhưng gần hơn nữa để tránh vướng tuyệt đối (aisle hẹp)
+        tp.x = finalLookAt.x - 1.5; 
+        tp.y = 2.8;
+        const pushBackDir = Math.sign(tp.z - finalLookAt.z);
+        tp.z += pushBackDir * 0.8; 
+      }
+    }
+
+    // lookAt: nhìn về phía cuối của đoạn thẳng hiện tại để luôn nhìn thẳng theo đường line.
+    const lookIdx = hiIdx;
     const lp = lookAtPos.current;
-    if (lookIdx < waypoints.length) {
-      lp.set(waypoints[lookIdx].pos.x, 3.5, waypoints[lookIdx].pos.z);
+    
+    if (ls >= waypoints.length - 2.2) {
+      // Giai đoạn cuối: hướng thẳng vào khoang sách nhanh hơn
+      lp.lerp(finalLookAt, 0.4);
+    } else if (loIdx !== hiIdx) {
+      // Nhìn về phía cuối đoạn đường đang đi, giữ độ cao ngang tầm mắt
+      lp.set(waypoints[hiIdx].pos.x, 3.5, waypoints[hiIdx].pos.z);
+    } else if (lookIdx + 1 < waypoints.length) {
+      // Nếu đang đứng yên tại waypoint, nhìn về điểm tiếp theo
+      lp.set(waypoints[lookIdx + 1].pos.x, 3.5, waypoints[lookIdx + 1].pos.z);
     } else {
       lp.copy(finalLookAt);
     }
-    if (ls >= waypoints.length - 1 - 0.1) {
+
+    if (ls >= waypoints.length - 1 - 0.05) {
       lp.copy(finalLookAt);
     }
 
@@ -353,18 +386,20 @@ function FocusManager({ target, isPathView, campus, highlightFace }: { target: T
   // Khi mục tiêu thay đổi, kích hoạt trạng thái focus
   useEffect(() => {
     setIsFocusing(true);
-    if (isPathView) {
-      if (campus === 'Thu Duc') {
-        // Góc nhìn rộng cố định nhưng gần hơn một chút để thấy rõ chi tiết
-        targetCamPos.set(-60, 30, 70);
-      } else {
-        // Sài Gòn: Kệ xếp dọc nên zoom từ góc chéo
-        targetCamPos.set(target.x - 10, 20, target.z + 20);
-      }
+    if (campus === 'Thu Duc' && !isPathView) {
+      // Thủ Đức Overview: Camera ở thang máy
+      targetCamPos.set(-45, 25, 45);
+    } else if (campus === 'Thu Duc') {
+      // Thủ Đức Guide: Zoom sát kệ
+      const zOffset = highlightFace === 2 ? -10 : 10;
+      targetCamPos.set(target.x - 3, 4, target.z + zOffset);
+    } else {
+      // Sài Gòn hoặc mặc định
+      targetCamPos.set(target.x - 10, 18, target.z + 18);
     }
-  }, [target, isPathView, targetCamPos, campus]);
+  }, [target, isPathView, targetCamPos, campus, highlightFace]);
 
-  // Nếu người dùng bắt đầu tương tác, ngừng tự động focus để tránh "giằng co"
+  // Nếu người dùng bắt đầu tương tác, ngừng tự động focus
   useEffect(() => {
     if (!controls) return;
     const stopFocus = () => setIsFocusing(false);
@@ -374,25 +409,19 @@ function FocusManager({ target, isPathView, campus, highlightFace }: { target: T
 
   useFrame(() => {
     if (controls && isFocusing) {
-      const distance = (controls as any).target.distanceTo(target);
-      const camDistance = isPathView ? camera.position.distanceTo(targetCamPos) : 0;
+      // Đối với Thủ Đức overview, target nhìn vào giữa thư viện thay vì nhìn vào cửa thang máy
+      const effectiveTarget = (campus === 'Thu Duc' && !isPathView) 
+        ? new THREE.Vector3(-10, 0, 10) 
+        : target;
 
-      // Khi đã đến rất gần, dừng focus
-      if (distance < 0.1 && camDistance < 1.0) {
+      const distance = (controls as any).target.distanceTo(effectiveTarget);
+      const camDistance = camera.position.distanceTo(targetCamPos);
+
+      if (distance < 0.1 && camDistance < 0.5) {
         setIsFocusing(false);
       } else {
-        if (campus === 'Thu Duc') {
-          // Thủ Đức: Luôn về góc nhìn rộng cố định bao quát toàn sảnh (như screenshot 10:23 AM)
-          const roomCenter = new THREE.Vector3(-25, 0, 30);
-          (controls as any).target.lerp(roomCenter, 0.05);
-          camera.position.lerp(targetCamPos, 0.05);
-        } else {
-          // Sài Gòn: Zoom vào từng kệ
-          (controls as any).target.lerp(target, 0.05);
-          if (isPathView) {
-            camera.position.lerp(targetCamPos, 0.05);
-          }
-        }
+        (controls as any).target.lerp(effectiveTarget, 0.05);
+        camera.position.lerp(targetCamPos, 0.05);
         (controls as any).update();
       }
     }
