@@ -57,14 +57,24 @@ function Bay({
   onBayClick?: (rackNumber: number, bay: number, face: number) => void;
   campus: string;
 }) {
-  const offsetX = campus === 'Thu Duc' ? (2 - bayIndex) * 3 : (bayIndex - 2) * 3;
+  const offsetX = campus === 'Thu Duc' ? (bayIndex - 3.5) * 3 : (bayIndex - 2) * 3;
 
   // Tìm thông tin sách cho mặt trước và mặt sau của khoang này
   const face1Shelf = shelves.find(s => s.bay === bayIndex && s.face === 1);
   const face2Shelf = shelves.find(s => s.bay === bayIndex && s.face === 2);
 
-  const displayCode1 = face1Shelf ? face1Shelf.code.toUpperCase() : `BAY ${bayIndex}`;
-  const displayCode2 = face2Shelf ? face2Shelf.code.toUpperCase() : `BAY ${bayIndex}`;
+  const getThuDucLabel = (idx: number, face: number) => {
+    if (face === 1) {
+      // Mặt trước: 1(Trái)->A, ..., 6(Phải)->F
+      return String.fromCharCode(64 + idx);
+    } else {
+      // Mặt sau (U-shape): 6(Phải mặt trước = Trái mặt sau)->G, ..., 1(Trái mặt trước = Phải mặt sau)->L
+      return String.fromCharCode(64 + (13 - idx));
+    }
+  };
+
+  const displayCode1 = face1Shelf ? face1Shelf.code.toUpperCase() : (campus === 'Thu Duc' ? getThuDucLabel(bayIndex, 1) : `BAY ${bayIndex}`);
+  const displayCode2 = face2Shelf ? face2Shelf.code.toUpperCase() : (campus === 'Thu Duc' ? getThuDucLabel(bayIndex, 2) : `BAY ${bayIndex}`);
 
   return (
     <group position={[offsetX, 0, 0]}>
@@ -83,39 +93,35 @@ function Bay({
       <mesh geometry={dividerGeo} material={mat} position={[1.67, 3.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
       <mesh geometry={dividerGeo} material={mat} position={[1.67, 4.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
 
-      {/* Biển báo tên dãy mặt trước (Face 1) dán vào mép kệ trên cùng */}
-      {face1Shelf && (
-        <group position={[1.67, 5.0, 0.015]}>
-          <mesh position={[0, 0, 0]}>
-            <planeGeometry args={[0.9, 0.5]} />
-            <meshBasicMaterial color="#4f46e5" />
-          </mesh>
-          <mesh position={[0, 0, 0.005]}>
-            <planeGeometry args={[0.84, 0.44]} />
-            <meshBasicMaterial color="#ffffff" />
-          </mesh>
-          <Text position={[0, 0, 0.015]} fontSize={0.2} color="#1e1b4b" fontWeight="700" anchorX="center" anchorY="middle" letterSpacing={0.05}>
-            {displayCode1}
-          </Text>
-        </group>
-      )}
+      {/* Biển báo tên dãy mặt trước (Face 1) */}
+      <group position={[1.67, 5.0, 0.015]}>
+        <mesh position={[0, 0, 0]}>
+          <planeGeometry args={[0.9, 0.5]} />
+          <meshBasicMaterial color="#4f46e5" />
+        </mesh>
+        <mesh position={[0, 0, 0.005]}>
+          <planeGeometry args={[0.84, 0.44]} />
+          <meshBasicMaterial color="#ffffff" />
+        </mesh>
+        <Text position={[0, 0, 0.015]} fontSize={0.2} color="#1e1b4b" fontWeight="700" anchorX="center" anchorY="middle" letterSpacing={0.05}>
+          {displayCode1}
+        </Text>
+      </group>
 
-      {/* Biển báo tên dãy mặt sau (Face 2) dán vào mép kệ trên cùng */}
-      {face2Shelf && (
-        <group position={[1.67, 5.0, -0.995]} rotation={[0, Math.PI, 0]}>
-          <mesh position={[0, 0, 0]}>
-            <planeGeometry args={[0.9, 0.5]} />
-            <meshBasicMaterial color="#4f46e5" />
-          </mesh>
-          <mesh position={[0, 0, 0.005]}>
-            <planeGeometry args={[0.84, 0.44]} />
-            <meshBasicMaterial color="#ffffff" />
-          </mesh>
-          <Text position={[0, 0, 0.015]} fontSize={0.2} color="#1e1b4b" fontWeight="700" anchorX="center" anchorY="middle" letterSpacing={0.05}>
-            {displayCode2}
-          </Text>
-        </group>
-      )}
+      {/* Biển báo tên dãy mặt sau (Face 2) */}
+      <group position={[1.67, 5.0, -0.995]} rotation={[0, Math.PI, 0]}>
+        <mesh position={[0, 0, 0]}>
+          <planeGeometry args={[0.9, 0.5]} />
+          <meshBasicMaterial color="#4f46e5" />
+        </mesh>
+        <mesh position={[0, 0, 0.005]}>
+          <planeGeometry args={[0.84, 0.44]} />
+          <meshBasicMaterial color="#ffffff" />
+        </mesh>
+        <Text position={[0, 0, 0.015]} fontSize={0.2} color="#1e1b4b" fontWeight="700" anchorX="center" anchorY="middle" letterSpacing={0.05}>
+          {displayCode2}
+        </Text>
+      </group>
 
       {/* Tem dán Dewey mặt trước (Face 1: hướng +Z) */}
       {face1Shelf && (
@@ -201,7 +207,7 @@ function Rack({
   const centerBay = (minBay + maxBay) / 2;
   const centerX = (centerBay - 2) * 3 + 1.65;
 
-  const labelX = campus === 'Thu Duc' ? -11.95 : -2.95;
+  const labelX = campus === 'Thu Duc' ? -7.45 : -2.95;
 
   return (
     <group
@@ -485,7 +491,7 @@ export default function BookshelfScene({
         rackNumber: rack.rackNumber,
         bays: rack.bays,
         shelves: rack.shelves,
-        x: 0,
+        x: campus === 'Thu Duc' ? -4.5 : 0,
         z: -(index - totalRacks / 2) * ROW_SPACING_Z,
       };
     });
@@ -495,7 +501,7 @@ export default function BookshelfScene({
     if (highlightRack === null || highlightBay === null || highlightFace === null) return null;
     const rp = rackPositions.find((r) => r.rackNumber === highlightRack);
     if (!rp) return null;
-    const bayLocalX = campus === 'Thu Duc' ? (2 - highlightBay) * 3 + 1.65 : (highlightBay - 2) * 3 + 1.65;
+    const bayLocalX = campus === 'Thu Duc' ? (highlightBay - 3.5) * 3 + 1.65 : (highlightBay - 2) * 3 + 1.65;
     const faceLocalZ = highlightFace === 1 ? 0.0 : -0.98;
     return new THREE.Vector3(rp.x + bayLocalX, 2.5, rp.z + faceLocalZ);
   }, [highlightRack, highlightBay, highlightFace, rackPositions]);
@@ -564,7 +570,7 @@ export default function BookshelfScene({
 
     // Lối đi trước mặt kệ: face 1 ở phía +Z, face 2 ở phía -Z
     const aisleZ = highlightFace === 1 ? targetRack.z + 2.0 : targetRack.z - 3.0;
-    const shelfX = targetRack.x + (campus === 'Thu Duc' ? (2 - highlightBay) * 3 + 1.65 : (highlightBay - 2) * 3 + 1.65);
+    const shelfX = targetRack.x + (campus === 'Thu Duc' ? (highlightBay - 3.5) * 3 + 1.65 : (highlightBay - 2) * 3 + 1.65);
 
     if (campus === 'Sai Gon') {
       const rack2 = rackPositions.find(r => r.rackNumber === 2);
