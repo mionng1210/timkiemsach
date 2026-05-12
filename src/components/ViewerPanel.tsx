@@ -118,7 +118,15 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   }, [shelf, racks, campus, shelfPos]);
 
   const handleSceneBayClick = (rackNumber: number, bay: number, face: number) => {
-    // Cập nhật focus camera vào kệ được click
+    // Toggle: click vào kệ đang focus → thoát focus
+    if (focusRack === rackNumber && focusBay === bay && focusFace === face) {
+      setFocusRack(null);
+      setFocusBay(null);
+      setFocusFace(null);
+      return;
+    }
+
+    // Click kệ khác → chuyển focus
     setFocusRack(rackNumber);
     setFocusBay(bay);
     setFocusFace(face);
@@ -138,6 +146,12 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         className="viewer-canvas"
         camera={{ position: campus === 'Sai Gon' ? [-34.6, 20, 30] : [-60, 25, 150], fov: 65 }}
         shadows
+        onPointerMissed={() => {
+          // Click vào vùng trống → thoát trạng thái focus
+          setFocusRack(null);
+          setFocusBay(null);
+          setFocusFace(null);
+        }}
       >
         <color attach="background" args={['#ffffff']} />
         <fog attach="fog" args={['#ffffff', 100, 300]} />
@@ -150,9 +164,9 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           <BookshelfScene
             racks={racks}
             campus={campus}
-            highlightRack={shelf?.rackNumber ?? null}
-            highlightBay={shelf?.bay ?? null}
-            highlightFace={shelf?.face ?? null}
+            highlightRack={focusRack}
+            highlightBay={focusBay}
+            highlightFace={focusFace}
             onBayClick={handleSceneBayClick}
             onPathCalculated={setGuideWaypoints}
           />
