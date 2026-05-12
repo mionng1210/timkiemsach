@@ -18,12 +18,21 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const [isGuideMode, setIsGuideMode] = useState(false);
   const [currentGuideStep, setCurrentGuideStep] = useState(0);
 
+  // Track kệ đang được focus (có thể từ search result hoặc click trực tiếp trên 3D)
+  const [focusRack, setFocusRack] = useState<number | null>(null);
+  const [focusBay, setFocusBay] = useState<number | null>(null);
+  const [focusFace, setFocusFace] = useState<number | null>(null);
+
   // Reset guide khi chọn kệ khác hoặc đổi campus
   useEffect(() => {
     setIsGuideMode(false);
     onGuideModeChange?.(false);
     setCurrentGuideStep(0);
     setGuideWaypoints(null);
+    // Reset focus khi đổi campus hoặc search result
+    setFocusRack(selectedResult?.shelf?.rackNumber ?? null);
+    setFocusBay(selectedResult?.shelf?.bay ?? null);
+    setFocusFace(selectedResult?.shelf?.face ?? null);
   }, [selectedResult, campus, onGuideModeChange]);
 
   // Fetch rack layout khi đổi campus
@@ -41,6 +50,33 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   }, [campus]);
 
   const shelf = selectedResult?.shelf ?? null;
+
+  // Sync focusRack/Bay/Face với shelf từ search result
+  useEffect(() => {
+    if (shelf) {
+      setFocusRack(shelf.rackNumber);
+      setFocusBay(shelf.bay);
+      setFocusFace(shelf.face);
+    }
+  }, [shelf]);
+
+  // Tính vị trí 3D của kệ đang focus (dùng focusRack/Bay/Face)
+  const focusShelfPos = useMemo(() => {
+    if (focusRack === null || focusBay === null || focusFace === null || racks.length === 0) return null;
+    const sorted = [...racks].sort((a, b) => {
+      if (campus === 'Thu Duc') return b.rackNumber - a.rackNumber;
+      return a.rackNumber - b.rackNumber;
+    });
+    const index = sorted.findIndex((r) => r.rackNumber === focusRack);
+    if (index === -1) return null;
+
+    const x = campus === 'Thu Duc'
+      ? -4.5 + (focusBay - 3.5) * 3 + 1.65
+      : (focusBay - 2) * 3 + 1.65;
+    const y = 2.5;
+    const z = -(index - sorted.length / 2) * 4.0;
+    return new THREE.Vector3(x, y, z);
+  }, [focusRack, focusBay, focusFace, racks, campus]);
 
   const shelfPos = useMemo(() => {
     if (!shelf || racks.length === 0) return new THREE.Vector3(-15, 0, -30);
@@ -82,6 +118,11 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   }, [shelf, racks, campus, shelfPos]);
 
   const handleSceneBayClick = (rackNumber: number, bay: number, face: number) => {
+    // Cập nhật focus camera vào kệ được click
+    setFocusRack(rackNumber);
+    setFocusBay(bay);
+    setFocusFace(face);
+
     const rack = racks.find((r) => r.rackNumber === rackNumber);
     if (!rack) return;
     const clickedShelf = rack.shelves.find((s) => s.bay === bay && s.face === face);
@@ -93,8 +134,9 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   return (
     <div className="viewer-panel">
       <Canvas
+        key={campus}
         className="viewer-canvas"
-        camera={{ position: [-60, 25, 150], fov: 65 }}
+        camera={{ position: campus === 'Sai Gon' ? [-34.6, 20, 30] : [-60, 25, 150], fov: 65 }}
         shadows
       >
         <color attach="background" args={['#ffffff']} />
@@ -141,7 +183,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           />
         )}
 
-        {!isGuideMode && <FocusManager target={targetPos} isPathView={!!shelf} campus={campus} highlightFace={shelf?.face ?? null} />}
+        {!isGuideMode && <FocusManager target={focusShelfPos ?? targetPos} isPathView={focusShelfPos !== null} campus={campus} highlightFace={focusFace} />}
         {isGuideMode && guideWaypoints && (
           <FirstPersonCamera
             waypoints={guideWaypoints}
@@ -390,12 +432,16 @@ function FocusManager({ target, isPathView, campus, highlightFace }: { target: T
       // Thủ Đức Overview: Camera ở thang máy
       targetCamPos.set(-45, 25, 45);
     } else if (campus === 'Thu Duc') {
-      // Thủ Đức Guide: Zoom sát kệ
+      // Thủ Đức: Zoom sát kệ từ phía mặt trước hoặc sau
       const zOffset = highlightFace === 2 ? -10 : 10;
-      targetCamPos.set(target.x - 3, 4, target.z + zOffset);
+      targetCamPos.set(target.x - 3, 8, target.z + zOffset);
+    } else if (campus === 'Sai Gon' && !isPathView) {
+      // Sài Gòn Overview: Camera nhìn từ cửa ra vào
+      targetCamPos.set(-34.6, 20, 30);
     } else {
-      // Sài Gòn hoặc mặc định
-      targetCamPos.set(target.x - 10, 18, target.z + 18);
+      // Sài Gòn: Zoom sát kệ từ phía mặt tương ứng
+      const zOffset = highlightFace === 2 ? -8 : 8;
+      targetCamPos.set(target.x - 5, 8, target.z + zOffset);
     }
   }, [target, isPathView, targetCamPos, campus, highlightFace]);
 
@@ -409,10 +455,16 @@ function FocusManager({ target, isPathView, campus, highlightFace }: { target: T
 
   useFrame(() => {
     if (controls && isFocusing) {
-      // Đối với Thủ Đức overview, target nhìn vào giữa thư viện thay vì nhìn vào cửa thang máy
-      const effectiveTarget = (campus === 'Thu Duc' && !isPathView) 
-        ? new THREE.Vector3(-10, 0, 10) 
-        : target;
+      // Tính effective target để nhìn vào
+      let effectiveTarget: THREE.Vector3;
+      if (campus === 'Thu Duc' && !isPathView) {
+        effectiveTarget = new THREE.Vector3(-10, 0, 10);
+      } else if (campus === 'Sai Gon' && !isPathView) {
+        // Overview Sài Gòn: nhìn vào giữa khu vực kệ
+        effectiveTarget = new THREE.Vector3(0, 0, 0);
+      } else {
+        effectiveTarget = target;
+      }
 
       const distance = (controls as any).target.distanceTo(effectiveTarget);
       const camDistance = camera.position.distanceTo(targetCamPos);
@@ -420,8 +472,8 @@ function FocusManager({ target, isPathView, campus, highlightFace }: { target: T
       if (distance < 0.1 && camDistance < 0.5) {
         setIsFocusing(false);
       } else {
-        (controls as any).target.lerp(effectiveTarget, 0.05);
-        camera.position.lerp(targetCamPos, 0.05);
+        (controls as any).target.lerp(effectiveTarget, 0.07);
+        camera.position.lerp(targetCamPos, 0.07);
         (controls as any).update();
       }
     }
