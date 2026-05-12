@@ -10,9 +10,10 @@ interface ViewerPanelProps {
   campus: string;
   onBayClick?: (shelf: ShelfInfo) => void;
   onGuideModeChange?: (isGuideMode: boolean) => void;
+  onClearResult?: () => void;
 }
 
-export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuideModeChange }: ViewerPanelProps) {
+export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuideModeChange, onClearResult }: ViewerPanelProps) {
   const [racks, setRacks] = useState<RackInfo[]>([]);
   const [guideWaypoints, setGuideWaypoints] = useState<PathWaypoint[] | null>(null);
   const [isGuideMode, setIsGuideMode] = useState(false);
@@ -117,12 +118,17 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     return shelfPos;
   }, [shelf, racks, campus, shelfPos]);
 
+  const clearFocus = () => {
+    setFocusRack(null);
+    setFocusBay(null);
+    setFocusFace(null);
+    onClearResult?.();
+  };
+
   const handleSceneBayClick = (rackNumber: number, bay: number, face: number) => {
-    // Toggle: click vào kệ đang focus → thoát focus
+    // Toggle: click vào kệ đang focus → reset hoàn toàn
     if (focusRack === rackNumber && focusBay === bay && focusFace === face) {
-      setFocusRack(null);
-      setFocusBay(null);
-      setFocusFace(null);
+      clearFocus();
       return;
     }
 
@@ -146,12 +152,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         className="viewer-canvas"
         camera={{ position: campus === 'Sai Gon' ? [-34.6, 20, 30] : [-60, 25, 150], fov: 65 }}
         shadows
-        onPointerMissed={() => {
-          // Click vào vùng trống → thoát trạng thái focus
-          setFocusRack(null);
-          setFocusBay(null);
-          setFocusFace(null);
-        }}
+        onPointerMissed={clearFocus}
       >
         <color attach="background" args={['#ffffff']} />
         <fog attach="fog" args={['#ffffff', 100, 300]} />

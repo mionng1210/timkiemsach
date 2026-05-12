@@ -40,6 +40,7 @@ export default function App() {
         campus={campus}
         onBayClick={handleBayClick}
         onGuideModeChange={setIsGuideMode}
+        onClearResult={() => setSelectedResult(null)}
       />
       <GuideOverlay />
 
