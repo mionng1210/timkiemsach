@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { MapControls } from '@react-three/drei';
+import { MapControls, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import BookshelfScene, { type PathWaypoint } from './BookshelfScene';
@@ -18,6 +18,11 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const [guideWaypoints, setGuideWaypoints] = useState<PathWaypoint[] | null>(null);
   const [isGuideMode, setIsGuideMode] = useState(false);
   const [currentGuideStep, setCurrentGuideStep] = useState(0);
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [userStartRack, setUserStartRack] = useState<number | null>(null);
+
+  // Detect touch device (mobile/tablet)
+  const isMobile = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 
   // Track kệ đang được focus (có thể từ search result hoặc click trực tiếp trên 3D)
   const [focusRack, setFocusRack] = useState<number | null>(null);
@@ -30,6 +35,8 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     onGuideModeChange?.(false);
     setCurrentGuideStep(0);
     setGuideWaypoints(null);
+    setShowStartPicker(false);
+    setUserStartRack(null);
     // Reset focus khi đổi campus hoặc search result
     setFocusRack(selectedResult?.shelf?.rackNumber ?? null);
     setFocusBay(selectedResult?.shelf?.bay ?? null);
@@ -88,8 +95,8 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     const index = sorted.findIndex((r) => r.rackNumber === shelf.rackNumber);
     if (index === -1) return new THREE.Vector3(0, 0, 0);
 
-    const x = campus === 'Thu Duc' 
-      ? -4.5 + (shelf.bay - 3.5) * 3 + 1.65 
+    const x = campus === 'Thu Duc'
+      ? -4.5 + (shelf.bay - 3.5) * 3 + 1.65
       : (shelf.bay - 2) * 3 + 1.65;
     const y = 2.5;
     const z = -(index - sorted.length / 2) * 4.0; // ROW_SPACING_Z = 4.0
@@ -168,6 +175,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
             highlightRack={focusRack}
             highlightBay={focusBay}
             highlightFace={focusFace}
+            startRackNumber={userStartRack}
             onBayClick={handleSceneBayClick}
             onPathCalculated={setGuideWaypoints}
           />
@@ -186,16 +194,35 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </mesh>
 
         {!isGuideMode && (
-          <MapControls
-            makeDefault
-            minDistance={10}
-            maxDistance={300}
-            minPolarAngle={0.2}
-            maxPolarAngle={1.5}
-            enableDamping
-            dampingFactor={0.08}
-            panSpeed={2}
-          />
+          isMobile ? (
+            // Mobile: OrbitControls — 1 ngón pan, 2 ngón xoay + zoom
+            <OrbitControls
+              makeDefault
+              minDistance={10}
+              maxDistance={300}
+              minPolarAngle={0.1}
+              maxPolarAngle={Math.PI - 0.1}
+              enableDamping
+              dampingFactor={0.08}
+              enablePan={true}
+              panSpeed={1.5}
+              rotateSpeed={0.8}
+              zoomSpeed={1.2}
+              touches={{ ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE }}
+            />
+          ) : (
+            // Desktop: MapControls — chuột trái pan, chuột phải xoay
+            <MapControls
+              makeDefault
+              minDistance={10}
+              maxDistance={300}
+              minPolarAngle={0.2}
+              maxPolarAngle={1.5}
+              enableDamping
+              dampingFactor={0.08}
+              panSpeed={2}
+            />
+          )
         )}
 
         {!isGuideMode && <FocusManager target={focusShelfPos ?? targetPos} isPathView={focusShelfPos !== null} campus={campus} highlightFace={focusFace} />}
@@ -243,11 +270,11 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
               <span className="info-value">{selectedResult.campus}</span>
             </div>
 
-            {/* Start Guide Button inside Info Card */}
+            {/* Nút mở picker checkpoint */}
             {guideWaypoints && (
               <button
                 className="start-guide-btn-inline"
-                onClick={() => { setIsGuideMode(true); onGuideModeChange?.(true); setCurrentGuideStep(0); }}
+                onClick={() => { setUserStartRack(null); setShowStartPicker(true); }}
               >
                 <span>🚶‍♂️</span> Bắt đầu hướng dẫn đi
               </button>
@@ -281,8 +308,75 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </div>
       )}
 
-      {/* Guide UI Overlays */}
+      {/* Checkpoint Picker */}
+      {showStartPicker && (
+        <div className="start-picker-overlay">
+          <div className="start-picker-card">
+            <div className="start-picker-title">📍 Bạn đang đứng ở đâu?</div>
+            <p className="start-picker-sub">Chọn vị trí xuất phát để tính đường đi chính xác</p>
 
+            <div className="start-picker-options">
+              <button
+                className={`start-picker-entrance${userStartRack === null ? ' selected' : ''}`}
+                onClick={() => setUserStartRack(null)}
+              >
+                🚪 {campus === 'Thu Duc' ? 'Thang máy / Cửa vào' : 'Cửa ra vào'}
+              </button>
+
+              {/* Bàn thủ thư — Hiện cho cả 2 cơ sở */}
+              <button
+                className={`start-picker-entrance${userStartRack === -1 ? ' selected' : ''}`}
+                onClick={() => setUserStartRack(-1)}
+              >
+                📋 Quầy thủ thư
+              </button>
+
+              <div className="start-picker-grid">
+                {(() => {
+                  const displayRacks = [...racks];
+                  // Nếu là Sài Gòn và thiếu kệ 1 trong danh sách, thêm vào
+                  if (campus === 'Sai Gon' && !displayRacks.find(r => r.rackNumber === 1)) {
+                    displayRacks.push({ rackNumber: 1, bays: [1, 2, 3, 4, 5], shelves: [] });
+                  }
+                  
+                  return displayRacks
+                    .sort((a, b) => a.rackNumber - b.rackNumber)
+                    .filter(r => r.rackNumber !== focusRack)
+                    .map(r => (
+                      <button
+                        key={r.rackNumber}
+                        className={`start-picker-rack${userStartRack === r.rackNumber ? ' selected' : ''}`}
+                        onClick={() => setUserStartRack(r.rackNumber)}
+                      >
+                        Kệ {r.rackNumber}
+                      </button>
+                    ));
+                })()}
+              </div>
+            </div>
+
+            <div className="start-picker-actions">
+              <button className="guide-btn guide-btn-exit" onClick={() => setShowStartPicker(false)}>
+                Huỷ
+              </button>
+              <button
+                className="start-guide-btn-inline"
+                style={{ marginTop: 0, flex: 1 }}
+                onClick={() => {
+                  setShowStartPicker(false);
+                  setIsGuideMode(true);
+                  onGuideModeChange?.(true);
+                  setCurrentGuideStep(0);
+                }}
+              >
+                🚶‍♂️ Bắt đầu đi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Guide UI Overlays */}
       {isGuideMode && guideWaypoints && (
         <div className="guide-controls-overlay">
           <div className="guide-step-info">
@@ -377,7 +471,7 @@ function FirstPersonCamera({
     }
 
     if (ls >= waypoints.length - 1 - 0.01) {
-      tp.y = 2.8; 
+      tp.y = 2.8;
       if (campus === 'Sai Gon') {
         tp.x -= 0.7;
         tp.y = 2.5;
@@ -385,17 +479,17 @@ function FirstPersonCamera({
         tp.z += pushBackDir * 1.2;
       } else {
         // Thu Duc: Zoom chéo nhưng gần hơn nữa để tránh vướng tuyệt đối (aisle hẹp)
-        tp.x = finalLookAt.x - 1.5; 
+        tp.x = finalLookAt.x - 1.5;
         tp.y = 2.8;
         const pushBackDir = Math.sign(tp.z - finalLookAt.z);
-        tp.z += pushBackDir * 0.8; 
+        tp.z += pushBackDir * 0.8;
       }
     }
 
     // lookAt: nhìn về phía cuối của đoạn thẳng hiện tại để luôn nhìn thẳng theo đường line.
     const lookIdx = hiIdx;
     const lp = lookAtPos.current;
-    
+
     if (ls >= waypoints.length - 2.2) {
       // Giai đoạn cuối: hướng thẳng vào khoang sách nhanh hơn
       lp.lerp(finalLookAt, 0.4);
