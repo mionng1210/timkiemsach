@@ -618,25 +618,27 @@ export default function BookshelfScene({
       path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Rẽ vào sảnh kệ sách' });
 
       // Đi dọc hành lang tới kệ đích - Nhóm các kệ đi ngang qua (2 kệ 1 bước) như Sài Gòn
-      const sortedByZ = [...rackPositions].sort((a, b) => b.z - a.z); // Giảm dần theo Z
+      const isGoingDown = aisleZ < libraryGapZ;
+      const sortedByPath = [...rackPositions].sort((a, b) => 
+        isGoingDown ? (b.z - a.z) : (a.z - b.z)
+      );
+      let lastPassedRackNum = -1;
       let racksPassed = 0;
 
-      // Xác định hướng đi: lên (Z tăng) hay xuống (Z giảm)
-      const isGoingDown = aisleZ < libraryGapZ;
-
-      for (const rack of sortedByZ) {
+      for (const rack of sortedByPath) {
         const inBetween = isGoingDown
-          ? (rack.z < libraryGapZ - 1 && rack.z > aisleZ + 1)
-          : (rack.z > libraryGapZ + 1 && rack.z < aisleZ - 1);
+          ? (rack.z < libraryGapZ - 0.5 && rack.z > aisleZ + 0.5)
+          : (rack.z > libraryGapZ + 0.5 && rack.z < aisleZ - 0.5);
 
         if (inBetween) {
           racksPassed++;
           if (racksPassed % 2 === 0) {
             path.push({
               pos: new THREE.Vector3(bookshelfEntryX, 0.05, rack.z),
-              msg: `Đang đi ngang qua dãy kệ số ${rack.rackNumber + 1} và ${rack.rackNumber}`
+              msg: `Đang đi ngang qua dãy kệ số ${lastPassedRackNum} và ${rack.rackNumber}`
             });
           }
+          lastPassedRackNum = rack.rackNumber;
         }
       }
 
