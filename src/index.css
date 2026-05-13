@@ -829,7 +829,7 @@ html, body, #root {
   }
 
   .mobile-toggle-btn:active {
-    transform: scale(0.95);
+    transform: translateX(-50%) scale(0.95);
   }
 
   /* Sidebar nội dung co gọn */
