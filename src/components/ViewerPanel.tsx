@@ -134,7 +134,75 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     onClearResult?.();
   };
 
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [editingShelf, setEditingShelf] = useState<ShelfInfo | null>(null);
+
+  // ... existing code ...
+
+  const handleUpdateDewey = async (id: number, deweyStart: number, deweyEnd: number) => {
+    try {
+      const res = await fetch(`/api/admin/shelves/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deweyStart, deweyEnd }),
+      });
+      if (res.ok) {
+        // Refresh racks
+        const res2 = await fetch(`/api/racks?campus=${encodeURIComponent(campus)}`);
+        const data = await res2.json();
+        setRacks(data.racks || []);
+        setEditingShelf(null);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteShelf = async (id: number) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa kệ này?')) return;
+    try {
+      const res = await fetch(`/api/admin/shelves/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        const res2 = await fetch(`/api/racks?campus=${encodeURIComponent(campus)}`);
+        const data = await res2.json();
+        setRacks(data.racks || []);
+        clearFocus();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteBay = async (rackNumber: number, bay: number) => {
+    if (!confirm(`Bạn có chắc chắn muốn xóa TOÀN BỘ dãy (bay) ${bay} của kệ ${rackNumber}?`)) return;
+    try {
+      const res = await fetch(`/api/admin/racks/${rackNumber}/bays/${bay}?campus=${encodeURIComponent(campus)}`, { method: 'DELETE' });
+      if (res.ok) {
+        const res2 = await fetch(`/api/racks?campus=${encodeURIComponent(campus)}`);
+        const data = await res2.json();
+        setRacks(data.racks || []);
+        clearFocus();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleSceneBayClick = (rackNumber: number, bay: number, face: number) => {
+    const rack = racks.find((r) => r.rackNumber === rackNumber);
+    if (!rack) return;
+    const clickedShelf = rack.shelves.find((s) => s.bay === bay && s.face === face);
+
+    if (isAdminMode) {
+      setFocusRack(rackNumber);
+      setFocusBay(bay);
+      setFocusFace(face);
+      if (clickedShelf) {
+        setEditingShelf(clickedShelf);
+      }
+      return;
+    }
+
     // Toggle: click vào kệ đang focus → reset hoàn toàn
     if (focusRack === rackNumber && focusBay === bay && focusFace === face) {
       clearFocus();
@@ -146,9 +214,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     setFocusBay(bay);
     setFocusFace(face);
 
-    const rack = racks.find((r) => r.rackNumber === rackNumber);
-    if (!rack) return;
-    const clickedShelf = rack.shelves.find((s) => s.bay === bay && s.face === face);
     if (clickedShelf && onBayClick) {
       onBayClick(clickedShelf);
     }
@@ -156,12 +221,30 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
 
   return (
     <div className="viewer-panel">
+      <div className="viewer-top-bar">
+        <div className="rack-counter">
+          🏗️ {racks.length} kệ — {campus === 'Thu Duc' ? '🌳 Thủ Đức' : '🏙️ Sài Gòn'}
+        </div>
+        <button 
+          className={`admin-toggle-btn ${isAdminMode ? 'active' : ''}`}
+          onClick={() => {
+            setIsAdminMode(!isAdminMode);
+            setEditingShelf(null);
+          }}
+        >
+          {isAdminMode ? '🔓 Admin Mode: ON' : '🔒 Admin Mode: OFF'}
+        </button>
+      </div>
+
       <Canvas
         key={campus}
         className="viewer-canvas"
         camera={{ position: campus === 'Sai Gon' ? [-34.6, 20, 30] : [-60, 25, 150], fov: 65 }}
         shadows
-        onPointerMissed={clearFocus}
+        onPointerMissed={() => {
+          clearFocus();
+          setEditingShelf(null);
+        }}
       >
         <color attach="background" args={['#ffffff']} />
         <fog attach="fog" args={['#ffffff', 100, 300]} />
@@ -180,16 +263,16 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
             startRackNumber={userStartRack}
             onBayClick={handleSceneBayClick}
             onPathCalculated={setGuideWaypoints}
+            isAdminMode={isAdminMode}
           />
         </Suspense>
 
-        {/* Sàn nhà */}
+        {/* ... floor and walls ... */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
           <planeGeometry args={[500, 500]} />
           <meshStandardMaterial color="#f8f9fa" />
         </mesh>
 
-        {/* Tường phía sau - Dời ra xa để không che bàn ghế bên trái */}
         <mesh position={[100, 15, 0]} rotation={[0, -Math.PI / 2, 0]}>
           <planeGeometry args={[600, 60]} />
           <meshStandardMaterial color="#f1f3f5" />
@@ -197,7 +280,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
 
         {!isGuideMode && (
           isMobile ? (
-            // Mobile: OrbitControls — 1 ngón pan, 2 ngón xoay + zoom
             <OrbitControls
               makeDefault
               minDistance={10}
@@ -213,7 +295,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
               touches={{ ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE }}
             />
           ) : (
-            // Desktop: MapControls — chuột trái pan, chuột phải xoay
             <MapControls
               makeDefault
               minDistance={10}
@@ -240,6 +321,54 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           <PathOverviewCamera waypoints={guideWaypoints} />
         )}
       </Canvas>
+
+      {/* Admin Panel */}
+      {isAdminMode && editingShelf && (
+        <div className="admin-shelf-panel">
+          <h3>🔧 Quản lý Kệ {editingShelf.rackNumber}</h3>
+          <p>Mã kệ: <strong>{editingShelf.code.toUpperCase()}</strong> | Bay: {editingShelf.bay} | Mặt: {editingShelf.face === 1 ? 'Trước' : 'Sau'}</p>
+          
+          <div className="admin-form-group">
+            <label>Dewey Start:</label>
+            <input 
+              type="number" 
+              step="0.001"
+              defaultValue={editingShelf.deweyStart} 
+              id="deweyStart"
+            />
+          </div>
+          <div className="admin-form-group">
+            <label>Dewey End:</label>
+            <input 
+              type="number" 
+              step="0.001"
+              defaultValue={editingShelf.deweyEnd} 
+              id="deweyEnd"
+            />
+          </div>
+          
+          <div className="admin-actions">
+            <button className="admin-btn update" onClick={() => {
+              const start = parseFloat((document.getElementById('deweyStart') as HTMLInputElement).value);
+              const end = parseFloat((document.getElementById('deweyEnd') as HTMLInputElement).value);
+              handleUpdateDewey(editingShelf.shelfId, start, end);
+            }}>
+              Lưu thay đổi
+            </button>
+            <button className="admin-btn delete-shelf" onClick={() => handleDeleteShelf(editingShelf.shelfId)}>
+              Xóa ô này
+            </button>
+            <button className="admin-btn delete-bay" onClick={() => handleDeleteBay(editingShelf.rackNumber, editingShelf.bay)}>
+              Xóa cả dãy (Bay)
+            </button>
+            <button className="admin-btn cancel" onClick={() => setEditingShelf(null)}>
+              Đóng
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ... existing overlays ... */}
 
       {/* Info overlay */}
       {selectedResult && !isGuideMode && !isPathOverview && (
@@ -300,10 +429,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </div>
       )}
 
-      {/* Rack count indicator */}
-      <div className="rack-counter">
-        🏗️ {racks.length} kệ — {campus === 'Thu Duc' ? '🌳 Thủ Đức' : '🏙️ Sài Gòn'}
-      </div>
 
       {!selectedResult && (
         <div className="empty-state" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
