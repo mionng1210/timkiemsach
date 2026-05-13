@@ -1295,3 +1295,137 @@ html, body, #root {
     margin: 0 -24px 20px;
   }
 }
+
+/* ===== Path Overview Overlay ===== */
+.drag-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 0 auto 16px;
+  display: none;
+  opacity: 0.5;
+}
+
+/* ===== Path Overview Overlay ===== */
+.overview-controls-overlay {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  background: rgba(13, 17, 28, 0.85);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 24px;
+  border-radius: var(--radius-xl);
+  box-shadow: 
+    0 20px 40px rgba(0, 0, 0, 0.4),
+    inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 380px;
+  animation: overviewAppear 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes overviewAppear {
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.overview-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.overview-icon {
+  font-size: 20px;
+  background: linear-gradient(135deg, var(--accent-soft), rgba(74, 125, 255, 0.3));
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--accent-soft);
+}
+
+.overview-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.2px;
+}
+
+.overview-msg {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 4px;
+}
+
+.overview-actions {
+  display: flex;
+  gap: 12px;
+}
+
+/* Mobile Responsive for Overview */
+@media (max-width: 768px) {
+  .drag-handle {
+    display: block;
+  }
+  
+  .overview-controls-overlay {
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    border-radius: 24px 24px 0 0;
+    padding: 12px 24px 36px;
+    background: rgba(10, 14, 26, 0.98);
+    border: none;
+    border-top: 1px solid var(--border);
+    animation: slideUpMobile 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes slideUpMobile {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  
+  .overview-actions {
+    flex-direction: column-reverse;
+    gap: 12px;
+  }
+
+  .overview-actions .start-guide-btn-inline {
+    height: 56px;
+    font-size: 16px;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(135deg, var(--accent), #3b6ae0);
+    box-shadow: 0 8px 20px rgba(74, 125, 255, 0.3);
+    width: 100%;
+  }
+
+  .overview-actions .guide-btn-exit {
+    height: 56px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 16px;
+    border-radius: var(--radius-lg);
+    width: 100%;
+    padding: 0;
+  }
+
+  .overview-title {
+    font-size: 20px;
+  }
+
+  .overview-msg {
+    font-size: 15px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+}

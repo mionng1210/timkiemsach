@@ -20,6 +20,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const [currentGuideStep, setCurrentGuideStep] = useState(0);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [userStartRack, setUserStartRack] = useState<number | null>(null);
+  const [isPathOverview, setIsPathOverview] = useState(false);
 
   // Detect touch device (mobile/tablet)
   const isMobile = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
@@ -32,6 +33,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   // Reset guide khi chọn kệ khác hoặc đổi campus
   useEffect(() => {
     setIsGuideMode(false);
+    setIsPathOverview(false);
     onGuideModeChange?.(false);
     setCurrentGuideStep(0);
     setGuideWaypoints(null);
@@ -234,10 +236,13 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
             campus={campus}
           />
         )}
+        {isPathOverview && guideWaypoints && (
+          <PathOverviewCamera waypoints={guideWaypoints} />
+        )}
       </Canvas>
 
       {/* Info overlay */}
-      {selectedResult && !isGuideMode && (
+      {selectedResult && !isGuideMode && !isPathOverview && (
         <div className="viewer-info-overlay">
           <div className="info-card">
             <div className="info-card-title">Vị trí sách</div>
@@ -284,7 +289,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       )}
 
       {/* Bay label at bottom */}
-      {selectedResult && !isGuideMode && (
+      {selectedResult && !isGuideMode && !isPathOverview && (
         <div className="bay-label-3d">
           <div className="bay-number">Kệ {shelf!.rackNumber}</div>
           <div className="bay-desc">
@@ -364,9 +369,8 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
                 style={{ marginTop: 0, flex: 1 }}
                 onClick={() => {
                   setShowStartPicker(false);
-                  setIsGuideMode(true);
+                  setIsPathOverview(true);
                   onGuideModeChange?.(true);
-                  setCurrentGuideStep(0);
                 }}
               >
                 🚶‍♂️ Bắt đầu đi
@@ -407,6 +411,43 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           >
             ❌ Thoát hướng dẫn
           </button>
+        </div>
+      )}
+
+      {/* Path Overview Overlay */}
+      {isPathOverview && guideWaypoints && (
+        <div className="overview-controls-overlay">
+          <div className="drag-handle"></div>
+          <div className="overview-header">
+            <div className="overview-icon">📍</div>
+            <div className="overview-title">Tổng quát đường đi</div>
+          </div>
+          <div className="overview-msg">
+            Hệ thống đã tính toán đường đi tối ưu cho bạn. Nhấn nút bên dưới để bắt đầu di chuyển.
+          </div>
+          <div className="overview-actions">
+            <button 
+              className="start-guide-btn-inline" 
+              style={{ marginTop: 0, flex: 1 }}
+              onClick={() => {
+                setIsPathOverview(false);
+                setIsGuideMode(true);
+                setCurrentGuideStep(0);
+              }}
+            >
+              🚶‍♂️ Bắt đầu di chuyển
+            </button>
+            <button 
+              className="guide-btn guide-btn-exit" 
+              style={{ width: 'auto', padding: '0 20px' }}
+              onClick={() => { 
+                setIsPathOverview(false); 
+                setShowStartPicker(true); 
+              }}
+            >
+              Thoát
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -523,6 +564,49 @@ function FirstPersonCamera({
       cam.fov += (85 - cam.fov) * 0.08;
       camera.updateProjectionMatrix();
     }
+  });
+
+  return null;
+}
+
+function PathOverviewCamera({
+  waypoints
+}: {
+  waypoints: PathWaypoint[];
+}) {
+  const { camera } = useThree();
+  const targetCamPos = useMemo(() => new THREE.Vector3(), []);
+  const targetCenter = useMemo(() => new THREE.Vector3(), []);
+  const targetQuat = useRef(new THREE.Quaternion(0, 0, 0, 1));
+
+  useEffect(() => {
+    if (!waypoints || waypoints.length === 0) return;
+
+    const box = new THREE.Box3();
+    waypoints.forEach(wp => box.expandByPoint(wp.pos));
+
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+
+    const maxDim = Math.max(size.x, size.z, 25);
+    
+    // Position camera high and back to see everything
+    targetCamPos.set(center.x - maxDim * 0.8, maxDim * 0.9 + 15, center.z + maxDim * 0.8);
+    targetCenter.set(center.x, 0, center.z); // Nhìn vào tâm ở mặt đất
+  }, [waypoints, targetCamPos, targetCenter]);
+
+  useFrame(() => {
+    // Lerp position
+    camera.position.lerp(targetCamPos, 0.05);
+    
+    // Lerp rotation
+    const savedQuat = camera.quaternion.clone();
+    camera.lookAt(targetCenter);
+    targetQuat.current.copy(camera.quaternion);
+    camera.quaternion.copy(savedQuat);
+    camera.quaternion.slerp(targetQuat.current, 0.05);
   });
 
   return null;
