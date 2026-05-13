@@ -1,9 +1,15 @@
-import XLSX from 'xlsx';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import pg from 'pg';
+import dotenv from 'dotenv';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+dotenv.config();
+
+const { Pool, types } = pg;
+// Parse PostgreSQL 'numeric' type (OID 1700) as float
+types.setTypeParser(1700, (val) => parseFloat(val));
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
 // ===== Types =====
 export interface ShelfRow {
@@ -21,7 +27,7 @@ export interface ShelfRow {
 export interface RackInfo {
   rackNumber: number;
   shelves: ShelfRow[];
-  bays: number[];  // Danh sách bay thực tế (VD: [1,2] nếu chỉ có a,b,e,f)
+  bays: number[];
 }
 
 export interface CampusData {
@@ -35,197 +41,166 @@ export interface SearchResult {
   campus: string;
 }
 
-// ===== Thuật toán U-Shape (Dựa trên ký tự max của kệ) =====
-// Max letter 'f' → kệ 3 bay: a=B1F, b=B2F, c=B3F, d=B3B, e=B2B, f=B1B
-// Max letter 'd' → kệ 2 bay: a=B1F, b=B2F, c=B2B, d=B1B
-// Max letter 'b' → kệ 1 bay: a=B1F, b=B1B
-function letterToBayFace(letter: string, maxLetter: string): { bay: number; face: number } {
-  const idx = letter.toLowerCase().charCodeAt(0) - 97; // a=0, b=1, ...
-  const maxIdx = maxLetter.toLowerCase().charCodeAt(0) - 97;
-  const totalPositions = maxIdx + 1; // f→6, d→4, b→2
-  const half = totalPositions / 2;
-
-  if (idx < half) {
-    return { face: 1, bay: idx + 1 };                // Mặt trước: a→B1, b→B2, c→B3
-  } else {
-    return { face: 2, bay: totalPositions - idx };    // Mặt sau (U ngược)
-  }
-}
-
-// ===== Thuật toán Thu Đức (Mặt sau A-F, Mặt trước G-L) =====
-function getBayFaceForThuDuc(letter: string): { bay: number; face: number } {
-  const code = letter.toLowerCase().charCodeAt(0);
-  if (code >= 97 && code <= 102) { // a-f
-    return { face: 2, bay: code - 96 }; // a=1, b=2, ..., f=6 (Mặt sau)
-  } else if (code >= 103 && code <= 108) { // g-l
-    return { face: 1, bay: code - 102 }; // g=1, h=2, ..., l=6 (Mặt trước)
-  }
-  return { face: 1, bay: 1 };
-}
-
-// ===== Cache =====
-let cachedCampuses: CampusData[] | null = null;
-
-function loadData(): CampusData[] {
-  if (cachedCampuses) return cachedCampuses;
-
-  const dataDir = path.resolve(__dirname, '..');
-  const files = [
-    { file: 'Thu Duc Campus.xlsx', campus: 'Thu Duc' },
-    { file: 'Sai Gon Campus.xlsx', campus: 'Sai Gon' },
-  ];
-
-  const campuses: CampusData[] = [];
-
-  for (const { file, campus } of files) {
-    const filePath = path.join(dataDir, file);
-    try {
-      const wb = XLSX.readFile(filePath);
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet);
-
-      // Bước 1: Parse raw data và nhóm theo rack number
-      interface RawShelf {
-        shelfId: number;
-        code: string;
-        deweyStart: number;
-        deweyEnd: number;
-        rackNumber: number;
-        letter: string;
-      }
-
-      const rawMap = new Map<number, RawShelf[]>();
-
-      for (const row of rows) {
-        const code = String(row['Code'] || '').trim().toLowerCase();
-        const deweyStart = Number(row['DeweyStart'] || 0);
-        const deweyEnd = Number(row['DeweyEnd'] || 0);
-        const shelfId = Number(row['ShelfId'] || 0);
-
-        if (!code) continue;
-        const match = code.match(/^(\d+)([a-l])$/i);
-        if (!match) continue;
-
-        const rackNumber = parseInt(match[1], 10);
-        const letter = match[2].toLowerCase();
-
-        if (!rawMap.has(rackNumber)) rawMap.set(rackNumber, []);
-        rawMap.get(rackNumber)!.push({ shelfId, code, deweyStart, deweyEnd, rackNumber, letter });
-      }
-
-      // Bước 2: Tính bay/face dựa trên ký tự max của mỗi kệ
-      const shelves: ShelfRow[] = [];
-
-      for (const [, raws] of rawMap) {
-        // Tìm ký tự lớn nhất: f→3bay, d→2bay, b→1bay
-        const maxLetter = raws.reduce((max, r) =>
-          r.letter > max ? r.letter : max, 'a');
-        for (const raw of raws) {
-          const { bay, face } = (campus === 'Thu Duc')
-            ? getBayFaceForThuDuc(raw.letter)
-            : letterToBayFace(raw.letter, maxLetter);
-          shelves.push({
-            shelfId: raw.shelfId,
-            code: raw.code,
-            deweyStart: raw.deweyStart,
-            deweyEnd: raw.deweyEnd,
-            campus,
-            rackNumber: raw.rackNumber,
-            letter: raw.letter,
-            bay,
-            face,
-          });
-        }
-      }
-
-      // Nhóm theo rack number
-      const rackMap = new Map<number, ShelfRow[]>();
-      for (const s of shelves) {
-        if (!rackMap.has(s.rackNumber)) rackMap.set(s.rackNumber, []);
-        rackMap.get(s.rackNumber)!.push(s);
-      }
-
-      const racks: RackInfo[] = [...rackMap.entries()]
-        .sort((a, b) => a[0] - b[0])
-        .map(([rackNumber, shelfList]) => {
-          const uniqueBays = (campus === 'Thu Duc')
-            ? [1, 2, 3, 4, 5, 6]
-            : [...new Set(shelfList.map(s => s.bay))].sort((a, b) => a - b);
-          return {
-            rackNumber,
-            shelves: shelfList.sort((a, b) => a.letter.localeCompare(b.letter)),
-            bays: uniqueBays,
-          };
-        });
-
-      campuses.push({ campus, racks, totalShelves: shelves.length });
-    } catch (err) {
-      console.error(`Error reading ${file}:`, err);
-    }
-  }
-
-  cachedCampuses = campuses;
-  const totalRacks = campuses.reduce((s, c) => s + c.racks.length, 0);
-  console.log(`📚 Loaded data: ${campuses.map(c => `${c.campus}(${c.racks.length} racks)`).join(', ')} — Total: ${totalRacks} racks`);
-  return campuses;
-}
-
 // ===== API Handlers =====
 
 // Lấy layout kệ theo campus
-export function getRackLayout(campus: string): RackInfo[] {
-  const data = loadData();
-  const found = data.find(c => c.campus.toLowerCase() === campus.toLowerCase());
-  return found ? found.racks : [];
+export async function getRackLayout(campus: string): Promise<RackInfo[]> {
+  try {
+    const res = await pool.query(`
+      SELECT s.id as "shelfId", s.code, s.dewey_start as "deweyStart", s.dewey_end as "deweyEnd", 
+             c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face
+      FROM shelves s
+      JOIN campuses c ON s.campus_id = c.id
+      WHERE LOWER(c.name) = LOWER($1) AND s.is_deleted = FALSE
+      ORDER BY s.rack_number, s.letter
+    `, [campus]);
+
+    const shelves: ShelfRow[] = res.rows;
+    const rackMap = new Map<number, ShelfRow[]>();
+
+    for (const s of shelves) {
+      if (!rackMap.has(s.rackNumber)) rackMap.set(s.rackNumber, []);
+      rackMap.get(s.rackNumber)!.push(s);
+    }
+
+    return [...rackMap.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([rackNumber, shelfList]) => {
+        const uniqueBays = [...new Set(shelfList.map(s => s.bay))].sort((a, b) => a - b);
+        return {
+          rackNumber,
+          shelves: shelfList,
+          bays: uniqueBays,
+        };
+      });
+  } catch (err) {
+    console.error('Error getting rack layout:', err);
+    return [];
+  }
 }
 
 // Lấy danh sách campus
-export function getCampuses(): { name: string; rackCount: number; shelfCount: number }[] {
-  const data = loadData();
-  return data.map(c => ({
-    name: c.campus,
-    rackCount: c.racks.length,
-    shelfCount: c.totalShelves,
-  }));
+export async function getCampuses(): Promise<{ name: string; rackCount: number; shelfCount: number }[]> {
+  try {
+    const res = await pool.query(`
+      SELECT c.name, 
+             COUNT(DISTINCT s.rack_number) as "rackCount", 
+             COUNT(s.id) as "shelfCount"
+      FROM campuses c
+      LEFT JOIN shelves s ON c.id = s.campus_id AND s.is_deleted = FALSE
+      GROUP BY c.id, c.name
+    `);
+    return res.rows.map(r => ({
+      name: r.name,
+      rackCount: parseInt(r.rackCount),
+      shelfCount: parseInt(r.shelfCount),
+    }));
+  } catch (err) {
+    console.error('Error getting campuses:', err);
+    return [];
+  }
 }
 
 // Tìm kiếm theo Dewey number
-export function searchByDewey(deweyNumber: number, campus?: string): SearchResult[] {
-  const data = loadData();
-  const results: SearchResult[] = [];
+export async function searchByDewey(deweyNumber: number, campusName?: string): Promise<SearchResult[]> {
+  try {
+    let query = `
+      SELECT s.id as "shelfId", s.code, s.dewey_start as "deweyStart", s.dewey_end as "deweyEnd", 
+             c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face
+      FROM shelves s
+      JOIN campuses c ON s.campus_id = c.id
+      WHERE $1 >= s.dewey_start AND $1 <= s.dewey_end AND s.is_deleted = FALSE
+    `;
+    const params: any[] = [deweyNumber];
 
-  for (const c of data) {
-    if (campus && c.campus.toLowerCase() !== campus.toLowerCase()) continue;
-
-    for (const rack of c.racks) {
-      for (const shelf of rack.shelves) {
-        if (deweyNumber >= shelf.deweyStart && deweyNumber <= shelf.deweyEnd) {
-          results.push({ shelf, campus: c.campus });
-        }
-      }
+    if (campusName) {
+      query += ` AND LOWER(c.name) = LOWER($2)`;
+      params.push(campusName);
     }
-  }
 
-  return results;
+    const res = await pool.query(query, params);
+    return res.rows.map(s => ({ shelf: s, campus: s.campus }));
+  } catch (err) {
+    console.error('Error searching by dewey:', err);
+    return [];
+  }
 }
 
 // Tìm kiếm theo code (VD: "10a")
-export function searchByCode(code: string, campus?: string): SearchResult[] {
-  const data = loadData();
-  const q = code.toLowerCase().trim();
-  const results: SearchResult[] = [];
+export async function searchByCode(code: string, campusName?: string): Promise<SearchResult[]> {
+  try {
+    let query = `
+      SELECT s.id as "shelfId", s.code, s.dewey_start as "deweyStart", s.dewey_end as "deweyEnd", 
+             c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face
+      FROM shelves s
+      JOIN campuses c ON s.campus_id = c.id
+      WHERE s.code ILIKE $1 AND s.is_deleted = FALSE
+    `;
+    const params: any[] = [`%${code.trim()}%`];
 
-  for (const c of data) {
-    if (campus && c.campus.toLowerCase() !== campus.toLowerCase()) continue;
-
-    for (const rack of c.racks) {
-      for (const shelf of rack.shelves) {
-        if (shelf.code.includes(q)) {
-          results.push({ shelf, campus: c.campus });
-        }
-      }
+    if (campusName) {
+      query += ` AND LOWER(c.name) = LOWER($2)`;
+      params.push(campusName);
     }
-  }
 
-  return results;
+    const res = await pool.query(query, params);
+    return res.rows.map(s => ({ shelf: s, campus: s.campus }));
+  } catch (err) {
+    console.error('Error searching by code:', err);
+    return [];
+  }
+}
+
+// ===== Admin CRUD Operations =====
+
+export async function updateShelf(id: number, data: Partial<ShelfRow>): Promise<boolean> {
+  try {
+    const fields: string[] = [];
+    const values: any[] = [];
+    let i = 1;
+
+    if (data.deweyStart !== undefined) {
+      fields.push(`dewey_start = $${i++}`);
+      values.push(data.deweyStart);
+    }
+    if (data.deweyEnd !== undefined) {
+      fields.push(`dewey_end = $${i++}`);
+      values.push(data.deweyEnd);
+    }
+
+    if (fields.length === 0) return false;
+
+    values.push(id);
+    await pool.query(`
+      UPDATE shelves SET ${fields.join(', ')} WHERE id = $${i}
+    `, values);
+    return true;
+  } catch (err) {
+    console.error('Error updating shelf:', err);
+    return false;
+  }
+}
+
+export async function deleteShelf(id: number): Promise<boolean> {
+  try {
+    await pool.query('UPDATE shelves SET is_deleted = TRUE WHERE id = $1', [id]);
+    return true;
+  } catch (err) {
+    console.error('Error deleting shelf:', err);
+    return false;
+  }
+}
+
+export async function deleteBay(campusName: string, rackNumber: number, bay: number): Promise<boolean> {
+  try {
+    await pool.query(`
+      UPDATE shelves SET is_deleted = TRUE
+      WHERE campus_id = (SELECT id FROM campuses WHERE LOWER(name) = LOWER($1))
+      AND rack_number = $2 AND bay = $3
+    `, [campusName, rackNumber, bay]);
+    return true;
+  } catch (err) {
+    console.error('Error deleting bay:', err);
+    return false;
+  }
 }

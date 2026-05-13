@@ -19,6 +19,7 @@ interface BookshelfSceneProps {
   startRackNumber?: number | null;
   onBayClick?: (rackNumber: number, bay: number, face: number) => void;
   onPathCalculated?: (waypoints: PathWaypoint[] | null) => void;
+  isAdminMode?: boolean;
 }
 
 const ROW_SPACING_Z = 4.0;    // Khoảng cách giữa các kệ (tăng lên để có lối đi rộng hơn)
@@ -50,6 +51,7 @@ function Bay({
   shelves,
   onBayClick,
   campus,
+  isAdminMode,
 }: {
   bayIndex: number;
   mat: THREE.Material;
@@ -57,6 +59,7 @@ function Bay({
   shelves: ShelfInfo[];
   onBayClick?: (rackNumber: number, bay: number, face: number) => void;
   campus: string;
+  isAdminMode?: boolean;
 }) {
   const offsetX = campus === 'Thu Duc' ? (bayIndex - 3.5) * 3 : (bayIndex - 2) * 3;
 
@@ -187,6 +190,7 @@ function Rack({
   shelves,
   onBayClick,
   campus,
+  isAdminMode,
 }: {
   rackNumber: number;
   isHighlighted: boolean;
@@ -194,6 +198,7 @@ function Rack({
   shelves: ShelfInfo[];
   onBayClick?: (rackNumber: number, bay: number, face: number) => void;
   campus: string;
+  isAdminMode?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const mat = isHighlighted ? woodMatHL : hovered ? woodMatHover : woodMat;
@@ -216,7 +221,7 @@ function Rack({
       onPointerOut={() => { setHovered(false); document.body.style.cursor = 'default'; }}
     >
       {bays.map((b) => (
-        <Bay key={b} bayIndex={b} mat={mat} rackNumber={rackNumber} shelves={shelves} onBayClick={onBayClick} campus={campus} />
+        <Bay key={b} bayIndex={b} mat={mat} rackNumber={rackNumber} shelves={shelves} onBayClick={onBayClick} campus={campus} isAdminMode={isAdminMode} />
       ))}
 
       {/* Nhãn số kệ ở đầu dãy (phía ngoài) - Hình tròn xanh biển, số trắng */}
@@ -481,6 +486,7 @@ export default function BookshelfScene({
   startRackNumber,
   onBayClick,
   onPathCalculated,
+  isAdminMode,
 }: BookshelfSceneProps) {
   const rackPositions = useMemo(() => {
     const sorted = [...racks].sort((a, b) => {
@@ -671,6 +677,7 @@ export default function BookshelfScene({
             shelves={rp.shelves}
             onBayClick={onBayClick}
             campus={campus}
+            isAdminMode={isAdminMode}
           />
         </group>
       ))}
