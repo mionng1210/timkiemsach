@@ -245,34 +245,34 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       {selectedResult && !isGuideMode && !isPathOverview && (
         <div className="viewer-info-overlay">
           <div className="info-card">
-            <div className="info-card-title">Vị trí sách</div>
-            <div className="info-row">
-              <span className="info-label">Dãy kệ</span>
-              <span className="info-value highlight">{shelf!.code.toUpperCase()}</span>
+            <div className="info-card-header">
+              <div className="info-card-title">Vị trí sách</div>
+              <div className="info-campus-badge">{selectedResult.campus}</div>
             </div>
-            <div className="info-row">
-              <span className="info-label">Kệ số</span>
-              <span className="info-value">{shelf!.rackNumber}</span>
+            
+            <div className="info-stats-grid">
+              <div className="stat-item">
+                <span className="stat-label">Dãy</span>
+                <span className="stat-value highlight">{shelf!.code.toUpperCase()}</span>
+              </div>
+              <div className="stat-item">
+                <span className="stat-label">Kệ</span>
+                <span className="stat-value">{shelf!.rackNumber}</span>
+              </div>
+              <div className="stat-item">
+                <span className="stat-label">Khoang</span>
+                <span className="stat-value">{shelf!.bay}</span>
+              </div>
             </div>
-            <div className="info-row">
-              <span className="info-label">Khoang (Bay)</span>
-              <span className="info-value">Bay {shelf!.bay}</span>
-            </div>
-            <div className="info-row">
-              <span className="info-label">Mặt kệ</span>
-              <span className="info-value">
-                {shelf!.face === 1 ? '🔵 Mặt trước' : '🟠 Mặt sau'}
-              </span>
-            </div>
-            <div className="info-row">
-              <span className="info-label">Dewey</span>
-              <span className="info-value">
-                {shelf!.deweyStart.toFixed(3)} → {shelf!.deweyEnd.toFixed(3)}
-              </span>
-            </div>
-            <div className="info-row">
-              <span className="info-label">Cơ sở</span>
-              <span className="info-value">{selectedResult.campus}</span>
+
+            <div className="info-details-row">
+              <div className="detail-item">
+                <span className="detail-icon">{shelf!.face === 1 ? '🔵' : '🟠'}</span>
+                {shelf!.face === 1 ? 'Mặt trước' : 'Mặt sau'}
+              </div>
+              <div className="detail-item dewey">
+                <span>Dewey:</span> {shelf!.deweyStart.toFixed(3)} – {shelf!.deweyEnd.toFixed(3)}
+              </div>
             </div>
 
             {/* Nút mở picker checkpoint */}
@@ -281,7 +281,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
                 className="start-guide-btn-inline"
                 onClick={() => { setUserStartRack(null); setShowStartPicker(true); }}
               >
-                <span>🚶‍♂️</span> Bắt đầu hướng dẫn đi
+                <span>🚶‍♂️</span> Tìm đường đi
               </button>
             )}
           </div>
