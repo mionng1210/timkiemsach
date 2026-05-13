@@ -602,33 +602,9 @@ export default function BookshelfScene({
       if (startRackNumber === -1) {
         // Từ quầy thủ thư: bắt đầu ngay tại hành lang trước quầy
         path.push({ pos: new THREE.Vector3(mainCorridorX, 0.05, frontOfDeskZ), msg: 'Xuất phát từ quầy thủ thư' });
-
-        let racksPassed = 0;
-        const sortedByZ = [...rackPositions].sort((a, b) => b.z - a.z);
-        for (const rack of sortedByZ) {
-          if (rack.z < frontOfDeskZ && rack.z > aisleZ) {
-            racksPassed++;
-            if (racksPassed % 2 === 0)
-              path.push({ pos: new THREE.Vector3(mainCorridorX, 0.05, rack.z), msg: `Đang đi ngang qua kệ số ${rack.rackNumber - 1} và ${rack.rackNumber}` });
-          }
-        }
       } else if (startRackNumber === 1 || startRackForSaiGon) {
         // Bắt đầu từ kệ checkpoint (bao gồm kệ 1)
         path.push({ pos: new THREE.Vector3(mainCorridorX, 0.05, startAisleZ), msg: `Bắt đầu từ lối đi kệ số ${startRackNumber}` });
-
-        const goingUp = aisleZ > startAisleZ;
-        const sortedByZ = [...rackPositions].sort((a, b) => goingUp ? a.z - b.z : b.z - a.z);
-        let passed = 0;
-        for (const rack of sortedByZ) {
-          const between = goingUp
-            ? rack.z > startAisleZ + 1 && rack.z < aisleZ - 1
-            : rack.z < startAisleZ - 1 && rack.z > aisleZ + 1;
-          if (between) {
-            passed++;
-            if (passed % 2 === 0)
-              path.push({ pos: new THREE.Vector3(mainCorridorX, 0.05, rack.z), msg: `Đang đi ngang qua kệ số ${rack.rackNumber}` });
-          }
-        }
       } else {
         // Bắt đầu từ cửa ra vào
         const startX = -34.6;
@@ -636,19 +612,9 @@ export default function BookshelfScene({
         path.push({ pos: new THREE.Vector3(startX, 0.05, startZ), msg: 'Cửa ra vào' });
         path.push({ pos: new THREE.Vector3(startX, 0.05, frontOfDeskZ), msg: 'Tiến vào sảnh chính' });
         path.push({ pos: new THREE.Vector3(mainCorridorX, 0.05, frontOfDeskZ), msg: 'Tránh quầy thủ thư, rẽ vào hành lang' });
-
-        let racksPassed = 0;
-        const sortedByZ = [...rackPositions].sort((a, b) => b.z - a.z);
-        for (const rack of sortedByZ) {
-          if (rack.z < frontOfDeskZ && rack.z > aisleZ) {
-            racksPassed++;
-            if (racksPassed % 2 === 0)
-              path.push({ pos: new THREE.Vector3(mainCorridorX, 0.05, rack.z), msg: `Đang đi ngang qua kệ số ${rack.rackNumber - 1} và ${rack.rackNumber}` });
-          }
-        }
       }
 
-      path.push({ pos: new THREE.Vector3(mainCorridorX, 0.05, aisleZ), msg: `Tới lối đi của kệ số ${highlightRack}` });
+      path.push({ pos: new THREE.Vector3(mainCorridorX, 0.05, aisleZ), msg: `Đi thẳng dọc hành lang tới kệ số ${highlightRack}` });
       path.push({ pos: new THREE.Vector3(shelfX, 0.05, aisleZ), msg: `Tới vị trí sách cần tìm!` });
       return path;
     } else {
@@ -664,75 +630,21 @@ export default function BookshelfScene({
         // Từ quầy thủ thư Thủ Đức
         const deskX = features?.deskPos ? features.deskPos[0] : -52.5;
         const deskZ = features?.deskPos ? features.deskPos[2] : 0;
-        const corridorX = -35; // Hành lang giữa các hàng bàn ghế
         
         path.push({ pos: new THREE.Vector3(deskX, 0.05, deskZ), msg: 'Xuất phát từ quầy thủ thư' });
         path.push({ pos: new THREE.Vector3(deskX, 0.05, libraryGapZ), msg: 'Đi thẳng dọc theo hành lang chính' });
         path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Rẽ vào giữa 2 thanh chắn trước kệ' });
-        
-        const startAisleZ = libraryGapZ;
-        const isGoingDown = aisleZ < startAisleZ;
-        const sortedByZ = [...rackPositions].sort((a, b) => isGoingDown ? b.z - a.z : a.z - b.z);
-        let passed = 0;
-        for (const rack of sortedByZ) {
-          const between = isGoingDown
-            ? rack.z < startAisleZ - 1 && rack.z > aisleZ + 1
-            : rack.z > startAisleZ + 1 && rack.z < aisleZ - 1;
-          if (between) {
-            passed++;
-            if (passed % 2 === 0)
-              path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, rack.z), msg: `Đang đi ngang qua kệ số ${rack.rackNumber}` });
-          }
-        }
       } else if (startRack) {
         // Bắt đầu từ kệ checkpoint
         const startAisleZ = startRack.z + 2.0;
         path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, startAisleZ), msg: `Bắt đầu từ lối đi kệ số ${startRackNumber}` });
-
-        const isGoingDown = aisleZ < startAisleZ;
-        const sortedByZ = [...rackPositions].sort((a, b) => isGoingDown ? b.z - a.z : a.z - b.z);
-        let passed = 0;
-        for (const rack of sortedByZ) {
-          const between = isGoingDown
-            ? rack.z < startAisleZ - 1 && rack.z > aisleZ + 1
-            : rack.z > startAisleZ + 1 && rack.z < aisleZ - 1;
-          if (between) {
-            passed++;
-            if (passed % 2 === 0)
-              path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, rack.z), msg: `Đang đi ngang qua kệ số ${rack.rackNumber}` });
-          }
-        }
       } else {
         // Bắt đầu từ thang máy
         const startX = -52.5;
         const startZ = rack13.z;
         path.push({ pos: new THREE.Vector3(startX, 0.05, startZ), msg: 'Bắt đầu từ thang máy' });
-        path.push({ pos: new THREE.Vector3(startX, 0.05, libraryGapZ), msg: 'Bước ra khỏi thang máy' });
+        path.push({ pos: new THREE.Vector3(startX, 0.05, libraryGapZ), msg: 'Bước ra khỏi thang máy và đi thẳng' });
         path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Rẽ vào sảnh kệ sách' });
-
-        const isGoingDown = aisleZ < libraryGapZ;
-        const sortedByPath = [...rackPositions].sort((a, b) => 
-          isGoingDown ? (b.z - a.z) : (a.z - b.z)
-        );
-        let lastPassedRackNum = -1;
-        let racksPassed = 0;
-
-        for (const rack of sortedByPath) {
-          const inBetween = isGoingDown
-            ? (rack.z < libraryGapZ - 0.5 && rack.z > aisleZ + 0.5)
-            : (rack.z > libraryGapZ + 0.5 && rack.z < aisleZ - 0.5);
-
-          if (inBetween) {
-            racksPassed++;
-            if (racksPassed % 2 === 0) {
-              path.push({
-                pos: new THREE.Vector3(bookshelfEntryX, 0.05, rack.z),
-                msg: `Đang đi ngang qua dãy kệ số ${lastPassedRackNum} và ${rack.rackNumber}`
-              });
-            }
-            lastPassedRackNum = rack.rackNumber;
-          }
-        }
       }
 
       path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, aisleZ), msg: `Tới lối đi của kệ số ${highlightRack}` });
