@@ -1032,6 +1032,25 @@ html, body, #root {
     font-size: 20px;
   }
 
+  .guide-steps {
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .guide-controls-info {
+    margin-bottom: 24px;
+  }
+
+  .guide-controls-info h4 {
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+
+  .control-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
   .guide-icon {
     font-size: 36px;
     margin-bottom: 12px;
@@ -1217,12 +1236,25 @@ html, body, #root {
   background: var(--bg-secondary);
   width: 100%;
   max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   padding: 40px;
   position: relative;
   box-shadow: var(--shadow-lg);
   animation: modalIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.guide-modal::-webkit-scrollbar {
+  width: 6px;
+}
+.guide-modal::-webkit-scrollbar-track {
+  background: transparent;
+}
+.guide-modal::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
 }
 
 @keyframes modalIn {
