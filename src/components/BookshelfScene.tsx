@@ -661,14 +661,16 @@ export default function BookshelfScene({
       const path: PathWaypoint[] = [];
 
       if (startRackNumber === -1) {
-        // Từ quầy thủ thư Thủ Đức (nằm ở gần kệ 1)
+        // Từ quầy thủ thư Thủ Đức
         const deskX = features?.deskPos ? features.deskPos[0] : -52.5;
         const deskZ = features?.deskPos ? features.deskPos[2] : 0;
+        const corridorX = -35; // Hành lang giữa các hàng bàn ghế
         
         path.push({ pos: new THREE.Vector3(deskX, 0.05, deskZ), msg: 'Xuất phát từ quầy thủ thư' });
-        path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, deskZ), msg: 'Di chuyển vào khu vực kệ sách' });
+        path.push({ pos: new THREE.Vector3(deskX, 0.05, libraryGapZ), msg: 'Đi thẳng dọc theo hành lang chính' });
+        path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Rẽ vào giữa 2 thanh chắn trước kệ' });
         
-        const startAisleZ = deskZ;
+        const startAisleZ = libraryGapZ;
         const isGoingDown = aisleZ < startAisleZ;
         const sortedByZ = [...rackPositions].sort((a, b) => isGoingDown ? b.z - a.z : a.z - b.z);
         let passed = 0;
