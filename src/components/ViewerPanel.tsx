@@ -21,6 +21,11 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [userStartRack, setUserStartRack] = useState<number | null>(null);
   const [isPathOverview, setIsPathOverview] = useState(false);
+  
+  // Draggable Admin Panel state
+  const [adminPanelPos, setAdminPanelPos] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
 
   // Detect touch device (mobile/tablet)
   const isMobile = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
@@ -219,6 +224,64 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     }
   };
 
+  const handleDragMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return; // Only left click
+    const panel = (e.currentTarget as HTMLElement).closest('.admin-shelf-panel');
+    if (!panel) return;
+
+    const rect = panel.getBoundingClientRect();
+    dragOffset.current = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    };
+    setIsDragging(true);
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // Calculate new position relative to the viewport
+      // But we'll use it as 'left' and 'top' which are relative to the viewer-panel container
+      const container = document.querySelector('.viewer-panel');
+      if (!container) return;
+      const containerRect = container.getBoundingClientRect();
+
+      let newX = e.clientX - containerRect.left - dragOffset.current.x;
+      let newY = e.clientY - containerRect.top - dragOffset.current.y;
+
+      // Optional: boundary checks
+      newX = Math.max(0, Math.min(newX, containerRect.width - 320));
+      newY = Math.max(0, Math.min(newY, containerRect.height - 400));
+
+      setAdminPanelPos({ x: newX, y: newY });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
+  // Reset admin panel position when a new shelf is selected
+  useEffect(() => {
+    if (editingShelf) {
+      // Initial position: top 80px, right 24px (relative to container)
+      const container = document.querySelector('.viewer-panel');
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        setAdminPanelPos({ x: rect.width - 320 - 24, y: 80 });
+      }
+    }
+  }, [editingShelf]);
+
   return (
     <div className="viewer-panel">
       <div className="viewer-top-bar">
@@ -322,27 +385,35 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         )}
       </Canvas>
 
-      {/* Admin Panel */}
       {isAdminMode && editingShelf && (
-        <div className="admin-shelf-panel">
-          <h3>🔧 Quản lý Kệ {editingShelf.rackNumber}</h3>
+        <div 
+          className="admin-shelf-panel" 
+          key={editingShelf.shelfId}
+          style={{ 
+            left: adminPanelPos.x, 
+            top: adminPanelPos.y, 
+            right: 'auto', // Override CSS right: 24px
+            position: 'absolute' 
+          }}
+        >
+          <h3 style={{ cursor: 'move', userSelect: 'none' }} onMouseDown={handleDragMouseDown}>
+            🔧 Quản lý Kệ {editingShelf.rackNumber}
+          </h3>
           <p>Mã kệ: <strong>{editingShelf.code.toUpperCase()}</strong> | Bay: {editingShelf.bay} | Mặt: {editingShelf.face === 1 ? 'Trước' : 'Sau'}</p>
           
           <div className="admin-form-group">
             <label>Dewey Start:</label>
             <input 
-              type="number" 
-              step="0.001"
-              defaultValue={editingShelf.deweyStart} 
+              type="text" 
+              defaultValue={editingShelf.deweyStart.toFixed(3)} 
               id="deweyStart"
             />
           </div>
           <div className="admin-form-group">
             <label>Dewey End:</label>
             <input 
-              type="number" 
-              step="0.001"
-              defaultValue={editingShelf.deweyEnd} 
+              type="text" 
+              defaultValue={editingShelf.deweyEnd.toFixed(3)} 
               id="deweyEnd"
             />
           </div>
