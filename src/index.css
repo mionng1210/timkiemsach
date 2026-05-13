@@ -1242,3 +1242,56 @@ html, body, #root {
   transform: translateY(-2px);
   box-shadow: 0 4px 15px var(--accent-glow);
 }
+
+.guide-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0 -40px 24px;
+}
+
+.guide-controls-info {
+  margin-bottom: 32px;
+}
+
+.guide-controls-info h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.control-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-item span {
+  font-size: 18px;
+  width: 24px;
+  display: flex;
+  justify-content: center;
+}
+
+@media (max-width: 768px) {
+  .guide-divider {
+    margin: 0 -24px 20px;
+  }
+}

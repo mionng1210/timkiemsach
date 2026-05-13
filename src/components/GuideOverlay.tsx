@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 
 export default function GuideOverlay() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isTouch, setIsTouch] = useState(false);
 
   // Tự động mở khi load lần đầu (kiểm tra localStorage)
   useEffect(() => {
+    setIsTouch('ontouchstart' in window || navigator.maxTouchPoints > 0);
     const hasSeenGuide = localStorage.getItem('hasSeenGuide');
     if (!hasSeenGuide) {
       setIsOpen(true);
@@ -66,6 +68,27 @@ export default function GuideOverlay() {
               <h4>Xác định mặt kệ</h4>
               <p>Kiểm tra nhãn ở dưới để biết sách nằm ở <strong>Mặt Trước</strong> hay <strong>Mặt Sau</strong>.</p>
             </div>
+          </div>
+        </div>
+
+        <div className="guide-divider"></div>
+
+        <div className="guide-controls-info">
+          <h4>🎮 Cách điều khiển 3D</h4>
+          <div className="control-grid">
+            {isTouch ? (
+              <>
+                <div className="control-item"><span>👆</span> 1 ngón: Di chuyển</div>
+                <div className="control-item"><span>✌️</span> 2 ngón: Xoay</div>
+                <div className="control-item"><span>🤏</span> Thu phóng: Phóng to/nhỏ</div>
+              </>
+            ) : (
+              <>
+                <div className="control-item"><span>🖱️</span> Chuột trái: Di chuyển</div>
+                <div className="control-item"><span>⌨️</span> Ctrl + Chuột: Xoay</div>
+                <div className="control-item"><span>🎡</span> Cuộn chuột: Phóng to/nhỏ</div>
+              </>
+            )}
           </div>
         </div>
 
