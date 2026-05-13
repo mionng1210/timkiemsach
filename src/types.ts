@@ -15,6 +15,7 @@ export interface ShelfInfo {
 export interface RackInfo {
   rackNumber: number;
   shelves: ShelfInfo[];
+  bays: number[];
 }
 
 export interface SearchResult {
