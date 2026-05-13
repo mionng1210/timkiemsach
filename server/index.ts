@@ -39,16 +39,23 @@ app.get('/api/search', async (req, res) => {
 
     if (!q.trim()) return res.json({ results: [] });
 
-    // Kiểm tra nếu query là số thập phân → tìm theo Dewey
-    const deweyNum = parseFloat(q);
-    if (!isNaN(deweyNum) && deweyNum > 0) {
-      const results = await searchByDewey(deweyNum, campus || undefined);
-      return res.json({ results, query: q, type: 'dewey' });
+    // Kiểm tra nếu query là số (có thể có dấu chấm) và không chứa ký tự khác → Ưu tiên tìm theo Dewey
+    const isPureNumber = /^\d+(\.\d+)?$/.test(q.trim());
+    
+    if (isPureNumber) {
+      const deweyNum = parseFloat(q);
+      if (!isNaN(deweyNum)) {
+        const deweyResults = await searchByDewey(deweyNum, campus || undefined);
+        // Nếu tìm thấy theo Dewey thì trả về luôn
+        if (deweyResults.length > 0) {
+          return res.json({ results: deweyResults, query: q, type: 'dewey' });
+        }
+      }
     }
 
-    // Nếu không phải số → tìm theo code (VD: "10a")
-    const results = await searchByCode(q, campus || undefined);
-    return res.json({ results, query: q, type: 'code' });
+    // Nếu không phải số nguyên thủy hoặc không tìm thấy theo Dewey → tìm theo mã kệ (VD: "10a", "10A")
+    const codeResults = await searchByCode(q, campus || undefined);
+    return res.json({ results: codeResults, query: q, type: 'code' });
   } catch (error) {
     console.error('Search error:', error);
     return res.status(500).json({ error: 'Internal server error' });
