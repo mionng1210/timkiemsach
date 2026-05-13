@@ -11,9 +11,10 @@ interface ViewerPanelProps {
   onBayClick?: (shelf: ShelfInfo) => void;
   onGuideModeChange?: (isGuideMode: boolean) => void;
   onClearResult?: () => void;
+  onEditingChange?: (isEditing: boolean) => void;
 }
 
-export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuideModeChange, onClearResult }: ViewerPanelProps) {
+export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuideModeChange, onClearResult, onEditingChange }: ViewerPanelProps) {
   const [racks, setRacks] = useState<RackInfo[]>([]);
   const [guideWaypoints, setGuideWaypoints] = useState<PathWaypoint[] | null>(null);
   const [isGuideMode, setIsGuideMode] = useState(false);
@@ -142,7 +143,9 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [editingShelf, setEditingShelf] = useState<ShelfInfo | null>(null);
 
-  // ... existing code ...
+  useEffect(() => {
+    onEditingChange?.(editingShelf !== null);
+  }, [editingShelf, onEditingChange]);
 
   const handleUpdateDewey = async (id: number, deweyStart: number, deweyEnd: number) => {
     try {
@@ -330,7 +333,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           />
         </Suspense>
 
-        {/* ... floor and walls ... */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
           <planeGeometry args={[500, 500]} />
           <meshStandardMaterial color="#f8f9fa" />
@@ -390,13 +392,14 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           className="admin-shelf-panel" 
           key={editingShelf.shelfId}
           style={{ 
-            left: adminPanelPos.x, 
-            top: adminPanelPos.y, 
-            right: 'auto', // Override CSS right: 24px
-            position: 'absolute' 
+            left: isMobile ? 0 : adminPanelPos.x, 
+            top: isMobile ? 'auto' : adminPanelPos.y, 
+            bottom: isMobile ? 0 : 'auto',
+            right: isMobile ? 0 : 'auto',
+            position: isMobile ? 'fixed' : 'absolute' 
           }}
         >
-          <h3 style={{ cursor: 'move', userSelect: 'none' }} onMouseDown={handleDragMouseDown}>
+          <h3 style={{ cursor: 'move', userSelect: 'none' }} onMouseDown={isMobile ? undefined : handleDragMouseDown}>
             🔧 Quản lý Kệ {editingShelf.rackNumber}
           </h3>
           <p>Mã kệ: <strong>{editingShelf.code.toUpperCase()}</strong> | Bay: {editingShelf.bay} | Mặt: {editingShelf.face === 1 ? 'Trước' : 'Sau'}</p>
@@ -426,12 +429,14 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
             }}>
               Lưu thay đổi
             </button>
-            <button className="admin-btn delete-shelf" onClick={() => handleDeleteShelf(editingShelf.shelfId)}>
-              Xóa ô này
-            </button>
-            <button className="admin-btn delete-bay" onClick={() => handleDeleteBay(editingShelf.rackNumber, editingShelf.bay)}>
-              Xóa cả dãy (Bay)
-            </button>
+            <div className="admin-actions-row">
+              <button className="admin-btn delete-shelf" onClick={() => handleDeleteShelf(editingShelf.shelfId)}>
+                Xóa ô này
+              </button>
+              <button className="admin-btn delete-bay" onClick={() => handleDeleteBay(editingShelf.rackNumber, editingShelf.bay)}>
+                Xóa cả dãy
+              </button>
+            </div>
             <button className="admin-btn cancel" onClick={() => setEditingShelf(null)}>
               Đóng
             </button>
@@ -439,9 +444,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </div>
       )}
 
-      {/* ... existing overlays ... */}
-
-      {/* Info overlay */}
       {selectedResult && !isGuideMode && !isPathOverview && (
         <div className="viewer-info-overlay">
           <div className="info-card">
@@ -475,7 +477,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
               </div>
             </div>
 
-            {/* Nút mở picker checkpoint */}
             {guideWaypoints && (
               <button
                 className="start-guide-btn-inline"
@@ -488,7 +489,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </div>
       )}
 
-      {/* Bay label at bottom */}
       {selectedResult && !isGuideMode && !isPathOverview && (
         <div className="bay-label-3d">
           <div className="bay-number">Kệ {shelf!.rackNumber}</div>
@@ -509,7 +509,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </div>
       )}
 
-      {/* Checkpoint Picker */}
       {showStartPicker && (
         <div className="start-picker-overlay">
           <div className="start-picker-card">
@@ -524,7 +523,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
                 🚪 {campus === 'Thu Duc' ? 'Thang máy / Cửa vào' : 'Cửa ra vào'}
               </button>
 
-              {/* Bàn thủ thư — Hiện cho cả 2 cơ sở */}
               <button
                 className={`start-picker-entrance${userStartRack === -1 ? ' selected' : ''}`}
                 onClick={() => setUserStartRack(-1)}
@@ -535,7 +533,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
               <div className="start-picker-grid">
                 {(() => {
                   const displayRacks = [...racks];
-                  // Nếu là Sài Gòn và thiếu kệ 1 trong danh sách, thêm vào
                   if (campus === 'Sai Gon' && !displayRacks.find(r => r.rackNumber === 1)) {
                     displayRacks.push({ rackNumber: 1, bays: [1, 2, 3, 4, 5], shelves: [] });
                   }
@@ -576,7 +573,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </div>
       )}
 
-      {/* Guide UI Overlays */}
       {isGuideMode && guideWaypoints && (
         <div className="guide-controls-overlay">
           <div className="guide-step-info">
@@ -610,7 +606,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </div>
       )}
 
-      {/* Path Overview Overlay */}
       {isPathOverview && guideWaypoints && (
         <div className="overview-controls-overlay">
           <div className="drag-handle"></div>
@@ -662,7 +657,7 @@ function FirstPersonCamera({
   campus: string;
 }) {
   const { camera } = useThree();
-  const lerpStepRef = useRef(currentStep); // float, converges toward currentStep mỗi frame
+  const lerpStepRef = useRef(currentStep);
   const targetPos = useRef(new THREE.Vector3());
   const lookAtPos = useRef(new THREE.Vector3());
   const targetQuat = useRef(new THREE.Quaternion());
@@ -678,195 +673,118 @@ function FirstPersonCamera({
 
   useFrame(() => {
     if (!waypoints || waypoints.length === 0) return;
-
-    // Lerp lerpStepRef về currentStep — đây là mấu chốt làm cả tiến lẫn lùi đều mượt
     lerpStepRef.current += (currentStep - lerpStepRef.current) * 0.03;
     const ls = lerpStepRef.current;
-
-    // Nội suy vị trí giữa 2 waypoints liền kề dựa trên ls (float)
     const loIdx = Math.max(0, Math.min(waypoints.length - 1, Math.floor(ls)));
     const hiIdx = Math.max(0, Math.min(waypoints.length - 1, Math.ceil(ls)));
-    const t = ls - loIdx; // 0..1 giữa 2 waypoints
-
+    const t = ls - loIdx;
     const posLo = waypoints[loIdx].pos;
     const posHi = waypoints[hiIdx].pos;
-
     const tp = targetPos.current;
-    tp.set(
-      posLo.x + (posHi.x - posLo.x) * t,
-      3.5,
-      posLo.z + (posHi.z - posLo.z) * t
-    );
+    tp.set(posLo.x + (posHi.x - posLo.x) * t, 3.5, posLo.z + (posHi.z - posLo.z) * t);
 
-    // Điều chỉnh cao độ / lùi ra ở gần bước cuối
     if (ls >= waypoints.length - 2) {
-      const blend = Math.max(0, ls - (waypoints.length - 2)); // 0..1
-      if (campus === 'Thu Duc') {
-        // Thu Duc: Lùi nhẹ theo X sớm hơn để bao quát
-        tp.x -= 1.5 * blend;
-      }
+      const blend = Math.max(0, ls - (waypoints.length - 2));
+      if (campus === 'Thu Duc') tp.x -= 1.5 * blend;
     }
 
     if (ls >= waypoints.length - 1 - 0.01) {
       tp.y = 2.8;
       if (campus === 'Sai Gon') {
-        tp.x -= 0.7;
-        tp.y = 2.5;
+        tp.x -= 0.7; tp.y = 2.5;
         const pushBackDir = Math.sign(tp.z - finalLookAt.z);
         tp.z += pushBackDir * 1.2;
       } else {
-        // Thu Duc: Zoom chéo nhưng gần hơn nữa để tránh vướng tuyệt đối (aisle hẹp)
-        tp.x = finalLookAt.x - 1.5;
-        tp.y = 2.8;
+        tp.x = finalLookAt.x - 1.5; tp.y = 2.8;
         const pushBackDir = Math.sign(tp.z - finalLookAt.z);
         tp.z += pushBackDir * 0.8;
       }
     }
 
-    // lookAt: nhìn về phía cuối của đoạn thẳng hiện tại để luôn nhìn thẳng theo đường line.
-    const lookIdx = hiIdx;
     const lp = lookAtPos.current;
+    if (ls >= waypoints.length - 2.2) lp.lerp(finalLookAt, 0.4);
+    else if (loIdx !== hiIdx) lp.set(waypoints[hiIdx].pos.x, 3.5, waypoints[hiIdx].pos.z);
+    else if (hiIdx + 1 < waypoints.length) lp.set(waypoints[hiIdx + 1].pos.x, 3.5, waypoints[hiIdx + 1].pos.z);
+    else lp.copy(finalLookAt);
 
-    if (ls >= waypoints.length - 2.2) {
-      // Giai đoạn cuối: hướng thẳng vào khoang sách nhanh hơn
-      lp.lerp(finalLookAt, 0.4);
-    } else if (loIdx !== hiIdx) {
-      // Nhìn về phía cuối đoạn đường đang đi, giữ độ cao ngang tầm mắt
-      lp.set(waypoints[hiIdx].pos.x, 3.5, waypoints[hiIdx].pos.z);
-    } else if (lookIdx + 1 < waypoints.length) {
-      // Nếu đang đứng yên tại waypoint, nhìn về điểm tiếp theo
-      lp.set(waypoints[lookIdx + 1].pos.x, 3.5, waypoints[lookIdx + 1].pos.z);
-    } else {
-      lp.copy(finalLookAt);
-    }
+    if (ls >= waypoints.length - 1 - 0.05) lp.copy(finalLookAt);
 
-    if (ls >= waypoints.length - 1 - 0.05) {
-      lp.copy(finalLookAt);
-    }
-
-    // Lerp vị trí camera
     camera.position.lerp(tp, 0.07);
-
-    // Lerp rotation mượt
     const savedQuat = camera.quaternion.clone();
     camera.lookAt(lp);
     targetQuat.current.copy(camera.quaternion);
     camera.quaternion.copy(savedQuat);
     camera.quaternion.slerp(targetQuat.current, 0.07);
 
-    // Lerp FOV 40 → 85
     const cam = camera as any;
     if (cam.fov !== undefined && Math.abs(cam.fov - 85) > 0.1) {
       cam.fov += (85 - cam.fov) * 0.08;
       camera.updateProjectionMatrix();
     }
   });
-
   return null;
 }
 
-function PathOverviewCamera({
-  waypoints
-}: {
-  waypoints: PathWaypoint[];
-}) {
+function PathOverviewCamera({ waypoints }: { waypoints: PathWaypoint[] }) {
   const { camera } = useThree();
   const targetCamPos = useMemo(() => new THREE.Vector3(), []);
   const targetCenter = useMemo(() => new THREE.Vector3(), []);
   const targetQuat = useRef(new THREE.Quaternion(0, 0, 0, 1));
-
   useEffect(() => {
     if (!waypoints || waypoints.length === 0) return;
-
     const box = new THREE.Box3();
     waypoints.forEach(wp => box.expandByPoint(wp.pos));
-
-    const center = new THREE.Vector3();
-    box.getCenter(center);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-
+    const center = new THREE.Vector3(); box.getCenter(center);
+    const size = new THREE.Vector3(); box.getSize(size);
     const maxDim = Math.max(size.x, size.z, 25);
-    
-    // Position camera high and back to see everything
     targetCamPos.set(center.x - maxDim * 0.8, maxDim * 0.9 + 15, center.z + maxDim * 0.8);
-    targetCenter.set(center.x, 0, center.z); // Nhìn vào tâm ở mặt đất
+    targetCenter.set(center.x, 0, center.z);
   }, [waypoints, targetCamPos, targetCenter]);
-
   useFrame(() => {
-    // Lerp position
     camera.position.lerp(targetCamPos, 0.05);
-    
-    // Lerp rotation
     const savedQuat = camera.quaternion.clone();
     camera.lookAt(targetCenter);
     targetQuat.current.copy(camera.quaternion);
     camera.quaternion.copy(savedQuat);
     camera.quaternion.slerp(targetQuat.current, 0.05);
   });
-
   return null;
 }
-
 
 function FocusManager({ target, isPathView, campus, highlightFace }: { target: THREE.Vector3, isPathView: boolean, campus: string, highlightFace: number | null }) {
   const { controls, camera } = useThree();
   const [isFocusing, setIsFocusing] = useState(false);
   const targetCamPos = useMemo(() => new THREE.Vector3(), []);
-
-  // Khi mục tiêu thay đổi, kích hoạt trạng thái focus
   useEffect(() => {
     setIsFocusing(true);
-    if (campus === 'Thu Duc' && !isPathView) {
-      // Thủ Đức Overview: Camera ở thang máy
-      targetCamPos.set(-45, 25, 45);
-    } else if (campus === 'Thu Duc') {
-      // Thủ Đức: Zoom sát kệ từ phía mặt trước hoặc sau
+    if (campus === 'Thu Duc' && !isPathView) targetCamPos.set(-45, 25, 45);
+    else if (campus === 'Thu Duc') {
       const zOffset = highlightFace === 2 ? -10 : 10;
       targetCamPos.set(target.x - 3, 8, target.z + zOffset);
-    } else if (campus === 'Sai Gon' && !isPathView) {
-      // Sài Gòn Overview: Camera nhìn từ cửa ra vào
-      targetCamPos.set(-34.6, 20, 30);
-    } else {
-      // Sài Gòn: Zoom sát kệ từ phía mặt tương ứng
+    } else if (campus === 'Sai Gon' && !isPathView) targetCamPos.set(-34.6, 20, 30);
+    else {
       const zOffset = highlightFace === 2 ? -8 : 8;
       targetCamPos.set(target.x - 5, 8, target.z + zOffset);
     }
   }, [target, isPathView, targetCamPos, campus, highlightFace]);
-
-  // Nếu người dùng bắt đầu tương tác, ngừng tự động focus
   useEffect(() => {
     if (!controls) return;
     const stopFocus = () => setIsFocusing(false);
     (controls as any).addEventListener('start', stopFocus);
     return () => (controls as any).removeEventListener('start', stopFocus);
   }, [controls]);
-
   useFrame(() => {
     if (controls && isFocusing) {
-      // Tính effective target để nhìn vào
-      let effectiveTarget: THREE.Vector3;
-      if (campus === 'Thu Duc' && !isPathView) {
-        effectiveTarget = new THREE.Vector3(-10, 0, 10);
-      } else if (campus === 'Sai Gon' && !isPathView) {
-        // Overview Sài Gòn: nhìn vào giữa khu vực kệ
-        effectiveTarget = new THREE.Vector3(0, 0, 0);
-      } else {
-        effectiveTarget = target;
-      }
-
+      let effectiveTarget = (campus === 'Thu Duc' && !isPathView) ? new THREE.Vector3(-10, 0, 10) : (campus === 'Sai Gon' && !isPathView) ? new THREE.Vector3(0, 0, 0) : target;
       const distance = (controls as any).target.distanceTo(effectiveTarget);
       const camDistance = camera.position.distanceTo(targetCamPos);
-
-      if (distance < 0.1 && camDistance < 0.5) {
-        setIsFocusing(false);
-      } else {
+      if (distance < 0.1 && camDistance < 0.5) setIsFocusing(false);
+      else {
         (controls as any).target.lerp(effectiveTarget, 0.07);
         camera.position.lerp(targetCamPos, 0.07);
         (controls as any).update();
       }
     }
   });
-
   return null;
 }

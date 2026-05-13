@@ -9,6 +9,7 @@ export default function App() {
   const [campus, setCampus] = useState('Thu Duc');
   const [mobileView, setMobileView] = useState<'sidebar' | '3d'>('sidebar');
   const [isGuideMode, setIsGuideMode] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
   const handleResultSelect = useCallback((result: SearchResult) => {
     setSelectedResult(result);
@@ -40,12 +41,13 @@ export default function App() {
         campus={campus}
         onBayClick={handleBayClick}
         onGuideModeChange={setIsGuideMode}
+        onEditingChange={setIsEditing}
         onClearResult={() => setSelectedResult(null)}
       />
       <GuideOverlay />
 
       {/* Nút chuyển đổi giữa Sidebar và 3D trên mobile */}
-      {!isGuideMode && (
+      {!isGuideMode && !isEditing && (
         <button
           className="mobile-toggle-btn"
           onClick={() => setMobileView(mobileView === 'sidebar' ? '3d' : 'sidebar')}

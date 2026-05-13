@@ -372,6 +372,7 @@ html, body, #root {
   font-weight: 600;
 }
 
+
 .info-stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1059,6 +1060,7 @@ html, body, #root {
     gap: 6px;
   }
   
+  
   .admin-toggle-btn {
     padding: 6px 10px;
     font-size: 11px;
@@ -1678,17 +1680,29 @@ html, body, #root {
 .admin-actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   margin-top: 24px;
 }
 
+.admin-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+}
+
 .admin-btn {
-  padding: 10px;
+  width: 100%;
+  padding: 12px 16px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font-weight: 600;
   cursor: pointer;
-  transition: var(--transition);
+  transition: all 0.2s;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .admin-btn.update {
@@ -1696,22 +1710,95 @@ html, body, #root {
   color: white;
 }
 
-.admin-btn.delete-shelf {
-  background: var(--red-soft);
-  color: var(--red);
+.admin-btn.delete-shelf, .admin-btn.delete-bay {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
-.admin-btn.delete-bay {
-  background: var(--red);
+.admin-btn.delete-shelf:hover, .admin-btn.delete-bay:hover {
+  background: #ef4444;
   color: white;
 }
 
 .admin-btn.cancel {
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .admin-btn:hover {
-  opacity: 0.8;
   transform: translateY(-1px);
+  filter: brightness(1.1);
+}
+
+/* ===== Mobile Responsive Overrides (At the end for priority) ===== */
+@media (max-width: 768px) {
+  .admin-shelf-panel {
+    position: fixed !important;
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-height: 60vh !important;
+    border-radius: 24px 24px 0 0 !important;
+    margin: 0 !important;
+    padding: 24px !important;
+    z-index: 2000 !important;
+    background: rgba(17, 24, 39, 0.98) !important;
+    box-shadow: 0 -10px 40px rgba(0,0,0,0.5) !important;
+    animation: slideUp 0.3s ease-out;
+    display: flex;
+    flex-direction: column;
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  .admin-form-group input {
+    font-size: 16px; /* Chống auto-zoom trên iOS */
+    padding: 14px;
+  }
+
+  .admin-actions {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    margin-top: 24px !important;
+  }
+
+  /* Tạo hàng ngang cho 2 nút xóa */
+  .admin-actions-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .admin-btn {
+    width: 100% !important;
+    height: 52px !important; /* Chiều cao cố định cho tất cả nút */
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    border-radius: 14px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  
+  .admin-btn.update {
+    background: var(--primary) !important;
+    box-shadow: var(--shadow-lg) !important;
+  }
+
+  .admin-btn.cancel {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: #fff !important;
+  }
 }
