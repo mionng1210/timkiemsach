@@ -1,5 +1,6 @@
 import pg from 'pg';
 import dotenv from 'dotenv';
+import bcrypt from 'bcryptjs';
 
 dotenv.config();
 
@@ -245,6 +246,20 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
     return true;
   } catch (err) {
     console.error('Error adding shelf:', err);
+    return false;
+  }
+}
+
+// Xác thực đăng nhập Admin
+export async function loginAdmin(username: string, passwordPlain: string): Promise<boolean> {
+  try {
+    const res = await pool.query('SELECT password_hash FROM admins WHERE username = $1', [username]);
+    if (res.rows.length === 0) return false;
+    const { password_hash } = res.rows[0];
+    const match = await bcrypt.compare(passwordPlain, password_hash);
+    return match;
+  } catch (error) {
+    console.error('Lỗi xác thực admin:', error);
     return false;
   }
 }

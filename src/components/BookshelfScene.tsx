@@ -390,48 +390,95 @@ function EntranceArea({ position, isDouble = false }: { position: [number, numbe
   );
 }
 
-function AdminGridCell({ cx, cz, onClick }: { cx: number, cz: number, onClick: () => void }) {
-  const [hovered, setHovered] = useState(false);
-  return (
-    <mesh
-      position={[cx + 1.65, 0.05, cz - 0.49]}
-      rotation={[-Math.PI / 2, 0, 0]}
-      onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; }}
-      onPointerOut={() => { setHovered(false); document.body.style.cursor = 'default'; }}
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-    >
-      <planeGeometry args={[3.0, 1.0]} />
-      <meshBasicMaterial
-        color={hovered ? "#4caf50" : "#3498db"}
-        transparent
-        opacity={hovered ? 0.6 : 0.15}
-        side={THREE.DoubleSide}
-        depthWrite={false}
-      />
-      {/* Viền cho ô grid */}
-      <lineSegments>
-        <edgesGeometry args={[new THREE.PlaneGeometry(3.0, 1.0)]} />
-        <lineBasicMaterial color={hovered ? "#2e7d32" : "#2980b9"} opacity={0.4} transparent />
-      </lineSegments>
-    </mesh>
-  );
-}
+function AdminGrid({ onAddRackAt, visible }: { onAddRackAt?: (x: number, z: number) => void, visible: boolean }) {
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const [hoverPos, setHoverPos] = useState<[number, number] | null>(null);
 
-function AdminGrid({ onAddRackAt }: { onAddRackAt?: (x: number, z: number) => void }) {
-  const cols = Array.from({ length: 30 }, (_, i) => i - 22); // -22 to 7 (cx: -66 to 21)
-  const rows = Array.from({ length: 40 }, (_, i) => i - 20); // -20 to 19 (cz: -40 to 38)
+  const [cols, rows] = useMemo(() => {
+    // Phạm vi lưới dựa trên grid thực tế
+    const xRange = Array.from({ length: 40 }, (_, i) => i - 20); // -20 to 20
+    const zRange = Array.from({ length: 30 }, (_, i) => i - 15); // -15 to 15
+    return [xRange, zRange];
+  }, []);
+
+  const total = cols.length * rows.length;
+
+  const instances = useMemo(() => {
+    const data = [];
+    for (const col of cols) {
+      for (const row of rows) {
+        data.push({ cx: col * 3, cz: row * 2 });
+      }
+    }
+    return data;
+  }, [cols, rows]);
+
+  useEffect(() => {
+    if (!meshRef.current) return;
+    const dummy = new THREE.Object3D();
+    instances.forEach((inst, i) => {
+      dummy.position.set(inst.cx + 1.65, 0.05, inst.cz - 0.49);
+      dummy.rotation.set(-Math.PI / 2, 0, 0);
+      dummy.updateMatrix();
+      meshRef.current!.setMatrixAt(i, dummy.matrix);
+    });
+    meshRef.current.instanceMatrix.needsUpdate = true;
+    meshRef.current.computeBoundingSphere();
+  }, [instances]);
+
+  // Khi bật visible, cần tính lại bounding sphere để raycasting hoạt động
+  useEffect(() => {
+    if (visible && meshRef.current) {
+      meshRef.current.computeBoundingSphere();
+    }
+  }, [visible]);
 
   return (
-    <group position={[0, 0.01, 0]}>
-      {cols.map(col => (
-        rows.map(row => {
-          const cx = col * 3;
-          const cz = row * 2;
-          return (
-            <AdminGridCell key={`${col}-${row}`} cx={cx} cz={cz} onClick={() => onAddRackAt?.(cx, cz)} />
-          );
-        })
-      ))}
+    <group visible={visible}>
+      <instancedMesh
+        ref={meshRef}
+        args={[undefined, undefined, total]}
+        frustumCulled={false}
+        onClick={(e) => {
+          if (!visible) return;
+          e.stopPropagation();
+          if (e.instanceId !== undefined) {
+            const inst = instances[e.instanceId];
+            onAddRackAt?.(inst.cx, inst.cz);
+          }
+        }}
+        onPointerMove={(e) => {
+          if (!visible) return;
+          e.stopPropagation();
+          if (e.instanceId !== undefined) {
+            const inst = instances[e.instanceId];
+            setHoverPos([inst.cx, inst.cz]);
+            document.body.style.cursor = 'pointer';
+          }
+        }}
+        onPointerOut={() => {
+          if (!visible) return;
+          setHoverPos(null);
+          document.body.style.cursor = 'default';
+        }}
+      >
+        <planeGeometry args={[3.0, 1.0]} />
+        <meshBasicMaterial
+          color="#3498db"
+          transparent
+          opacity={0.15}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </instancedMesh>
+
+      {/* Ô highlight khi hover */}
+      {hoverPos && visible && (
+        <mesh position={[hoverPos[0] + 1.65, 0.06, hoverPos[1] - 0.49]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[3.0, 1.0]} />
+          <meshBasicMaterial color="#4caf50" transparent opacity={0.6} depthWrite={false} />
+        </mesh>
+      )}
     </group>
   );
 }
@@ -510,15 +557,15 @@ function FurnitureInstances({
 
   return (
     <>
-      <instancedMesh ref={tableHRef} args={[undefined, undefined, aislePositions.length]} frustumCulled={false}>
+      <instancedMesh ref={tableHRef} args={[undefined, undefined, aislePositions.length]}>
         <boxGeometry args={[8, 0.05, 1.2]} />
         <meshLambertMaterial color="#8b4513" />
       </instancedMesh>
-      <instancedMesh ref={tableVRef} args={[undefined, undefined, wallRowPositions.length]} frustumCulled={false}>
+      <instancedMesh ref={tableVRef} args={[undefined, undefined, wallRowPositions.length]}>
         <boxGeometry args={[1.2, 0.05, 8]} />
         <meshLambertMaterial color="#8b4513" />
       </instancedMesh>
-      <instancedMesh ref={chairRef} args={[undefined, undefined, totalChairs]} frustumCulled={false}>
+      <instancedMesh ref={chairRef} args={[undefined, undefined, totalChairs]}>
         <boxGeometry args={[0.6, 0.8, 0.6]} />
         <meshLambertMaterial color="#2c3e50" />
       </instancedMesh>
@@ -592,12 +639,24 @@ export default function BookshelfScene({
 
   const markerPos = useMemo(() => {
     if (highlightRack === null || highlightBay === null || highlightFace === null) return null;
+
+    // Check custom shelves first
+    const customShelf = customShelves.find(s => s.rackNumber === highlightRack && s.bay === highlightBay && s.face === highlightFace);
+    if (customShelf) {
+      const isThuDuc = campus === 'Thu Duc';
+      let zOffset = highlightFace === 1 ? 0.0 : -0.98;
+      if (isThuDuc) {
+        zOffset = highlightFace === 1 ? -0.98 : 0.0;
+      }
+      return new THREE.Vector3(customShelf.positionX! + 1.65, 2.5, customShelf.positionZ! + zOffset);
+    }
+
     const rp = rackPositions.find((r) => r.rackNumber === highlightRack);
     if (!rp) return null;
     const bayLocalX = campus === 'Thu Duc' ? (highlightBay - 3.5) * 3 + 1.65 : (highlightBay - 2) * 3 + 1.65;
     const faceLocalZ = highlightFace === 1 ? 0.0 : -0.98;
     return new THREE.Vector3(rp.x + bayLocalX, 2.5, rp.z + faceLocalZ);
-  }, [highlightRack, highlightBay, highlightFace, rackPositions]);
+  }, [highlightRack, highlightBay, highlightFace, rackPositions, customShelves, campus]);
 
   // Tìm vị trí kệ số 2 để đặt các khu vực chức năng (chỉ cho Sài Gòn)
   const features = useMemo(() => {
@@ -658,29 +717,32 @@ export default function BookshelfScene({
   const pathWaypoints = useMemo(() => {
     if (highlightRack === null || highlightBay === null || highlightFace === null) return null;
 
+    let aisleZ: number;
+    let shelfX: number;
+
     // Check if it's a custom shelf first
     const customShelf = customShelves.find(s => s.rackNumber === highlightRack && s.bay === highlightBay && s.face === highlightFace);
     if (customShelf) {
-      let aisleZ = highlightFace === 1 ? customShelf.positionZ! + 2.0 : customShelf.positionZ! - 3.0;
+      aisleZ = highlightFace === 1 ? customShelf.positionZ! + 2.0 : customShelf.positionZ! - 3.0;
 
       // Ở Thủ Đức, kệ custom được xoay 180 độ nên mặt trước và mặt sau ngược hướng
       if (campus === 'Thu Duc') {
         aisleZ = highlightFace === 1 ? customShelf.positionZ! - 3.0 : customShelf.positionZ! + 2.0;
       }
+      shelfX = customShelf.positionX!;
+    } else {
+      const targetRack = rackPositions.find((r) => r.rackNumber === highlightRack);
+      if (!targetRack) return null;
 
-      const shelfX = customShelf.positionX!;
-
-      const path: PathWaypoint[] = [];
-      path.push({ pos: new THREE.Vector3(0, 0.05, 0), msg: 'Xuất phát' }); // Placeholder start
-      path.push({ pos: new THREE.Vector3(shelfX, 0.05, aisleZ), msg: `Tới kệ tùy chỉnh` });
-      return path;
+      // Face 1 (local +Z) → Thu Duc xoay 180° → world -Z → camera cần ở z+ để nhìn thấy
+      // Face 2 (local -Z) → Thu Duc xoay 180° → world +Z → camera cần ở z- để nhìn thấy
+      if (campus === 'Thu Duc') {
+        aisleZ = highlightFace === 1 ? targetRack.z + 2.0 : targetRack.z - 3.0;
+      } else {
+        aisleZ = highlightFace === 1 ? targetRack.z + 2.0 : targetRack.z - 3.0;
+      }
+      shelfX = targetRack.x + (campus === 'Thu Duc' ? (highlightBay - 3.5) * 3 + 1.65 : (highlightBay - 2) * 3 + 1.65);
     }
-
-    const targetRack = rackPositions.find((r) => r.rackNumber === highlightRack);
-    if (!targetRack) return null;
-
-    const aisleZ = highlightFace === 1 ? targetRack.z + 2.0 : targetRack.z - 3.0;
-    const shelfX = targetRack.x + (campus === 'Thu Duc' ? (highlightBay - 3.5) * 3 + 1.65 : (highlightBay - 2) * 3 + 1.65);
 
     // Tìm vị trí kệ xuất phát (nếu có)
     const startRack = (startRackNumber != null)
@@ -875,7 +937,7 @@ export default function BookshelfScene({
       })}
 
       {/* Grid mode overlay for building */}
-      {isAdminMode && <AdminGrid onAddRackAt={onAddRackAt} />}
+      <AdminGrid visible={!!isAdminMode} onAddRackAt={onAddRackAt} />
 
       {markerPos && <HighlightMarker position={markerPos} />}
     </group>

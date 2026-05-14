@@ -8,7 +8,8 @@ import {
   updateShelf,
   deleteShelf,
   deleteBay,
-  addShelf
+  addShelf,
+  loginAdmin
 } from './bookService.js';
 
 const app = express();
@@ -21,6 +22,20 @@ app.use(express.json());
 app.get('/api/campuses', async (_req, res) => {
   const campuses = await getCampuses();
   return res.json({ campuses });
+});
+
+// API Đăng nhập Admin
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ success: false, message: 'Thiếu username hoặc password' });
+  }
+  const isValid = await loginAdmin(username, password);
+  if (isValid) {
+    return res.json({ success: true, message: 'Đăng nhập thành công', username });
+  } else {
+    return res.status(401).json({ success: false, message: 'Sai tên đăng nhập hoặc mật khẩu' });
+  }
 });
 
 // API lấy layout kệ cho 1 campus (để FE render 3D)

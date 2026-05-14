@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import XLSX from 'xlsx';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import bcrypt from 'bcryptjs';
 
 dotenv.config();
 
@@ -44,15 +45,18 @@ async function migrate() {
 
     // 1. Create tables
     await client.query(`
-      DROP TABLE IF EXISTS shelves;
-      DROP TABLE IF EXISTS campuses;
-
-      CREATE TABLE campuses (
+      CREATE TABLE IF NOT EXISTS campuses (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) UNIQUE NOT NULL
       );
 
-      CREATE TABLE shelves (
+      CREATE TABLE IF NOT EXISTS admins (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS shelves (
         id SERIAL PRIMARY KEY,
         campus_id INTEGER REFERENCES campuses(id) ON DELETE CASCADE,
         rack_number INTEGER NOT NULL,
@@ -62,9 +66,18 @@ async function migrate() {
         dewey_end DECIMAL(10, 3) NOT NULL,
         bay INTEGER NOT NULL,
         face INTEGER NOT NULL,
-        is_deleted BOOLEAN DEFAULT FALSE,
-        UNIQUE(campus_id, code)
+        is_deleted BOOLEAN DEFAULT FALSE
       );
+
+      -- Chuyển Unique Constraint sang Partial Index để hỗ trợ soft-delete
+      DO $$ 
+      BEGIN 
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'shelves_campus_id_code_key') THEN
+          ALTER TABLE shelves DROP CONSTRAINT shelves_campus_id_code_key;
+        END IF;
+      END $$;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS unique_active_shelf_idx ON shelves (campus_id, code) WHERE is_deleted = FALSE;
     `);
     console.log('✅ Tables created.');
 
@@ -114,12 +127,29 @@ async function migrate() {
             ? getBayFaceForThuDuc(raw.letter)
             : letterToBayFace(raw.letter, maxLetter);
 
-          await client.query(
-            `INSERT INTO shelves (campus_id, rack_number, letter, code, dewey_start, dewey_end, bay, face)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-             ON CONFLICT (campus_id, code) DO NOTHING`,
-            [campusId, raw.rackNumber, raw.letter, raw.code, raw.deweyStart, raw.deweyEnd, bay, face]
+          // Kiểm tra xem kệ này đã tồn tại chưa (kể cả đã bị xóa mềm)
+          const existing = await client.query(
+            'SELECT id FROM shelves WHERE campus_id = $1 AND code = $2 LIMIT 1',
+            [campusId, raw.code]
           );
+
+          if (existing.rows.length > 0) {
+            // Nếu tồn tại -> Cập nhật thông tin và hồi sinh (is_deleted = false)
+            await client.query(
+              `UPDATE shelves SET 
+                rack_number = $1, letter = $2, code = $3, dewey_start = $4, dewey_end = $5, 
+                bay = $6, face = $7, is_deleted = FALSE 
+               WHERE id = $8`,
+              [raw.rackNumber, raw.letter, raw.code, raw.deweyStart, raw.deweyEnd, bay, face, existing.rows[0].id]
+            );
+          } else {
+            // Nếu chưa có -> Insert mới
+            await client.query(
+              `INSERT INTO shelves (campus_id, rack_number, letter, code, dewey_start, dewey_end, bay, face, is_deleted)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE)`,
+              [campusId, raw.rackNumber, raw.letter, raw.code, raw.deweyStart, raw.deweyEnd, bay, face]
+            );
+          }
         }
       }
       console.log(`✅ Migrated ${campus}.`);
