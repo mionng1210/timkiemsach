@@ -22,6 +22,8 @@ export interface ShelfRow {
   letter: string;       // Ký tự vị trí, VD: "a"
   bay: number;          // Bay 1-3
   face: number;         // Face 1 (trước) hoặc 2 (sau)
+  positionX?: number;   // Tọa độ X tùy chỉnh
+  positionZ?: number;   // Tọa độ Z tùy chỉnh
 }
 
 export interface RackInfo {
@@ -48,7 +50,8 @@ export async function getRackLayout(campus: string): Promise<RackInfo[]> {
   try {
     const res = await pool.query(`
       SELECT s.id as "shelfId", s.code, s.dewey_start as "deweyStart", s.dewey_end as "deweyEnd", 
-             c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face
+             c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face,
+             s.position_x as "positionX", s.position_z as "positionZ"
       FROM shelves s
       JOIN campuses c ON s.campus_id = c.id
       WHERE LOWER(c.name) = LOWER($1) AND s.is_deleted = FALSE
@@ -106,7 +109,8 @@ export async function searchByDewey(deweyNumber: number, campusName?: string): P
   try {
     let query = `
       SELECT s.id as "shelfId", s.code, s.dewey_start as "deweyStart", s.dewey_end as "deweyEnd", 
-             c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face
+             c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face,
+             s.position_x as "positionX", s.position_z as "positionZ"
       FROM shelves s
       JOIN campuses c ON s.campus_id = c.id
       WHERE $1 >= s.dewey_start AND $1 <= s.dewey_end AND s.is_deleted = FALSE
@@ -131,7 +135,8 @@ export async function searchByCode(code: string, campusName?: string): Promise<S
   try {
     let query = `
       SELECT s.id as "shelfId", s.code, s.dewey_start as "deweyStart", s.dewey_end as "deweyEnd", 
-             c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face
+             c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face,
+             s.position_x as "positionX", s.position_z as "positionZ"
       FROM shelves s
       JOIN campuses c ON s.campus_id = c.id
       WHERE s.code ILIKE $1 AND s.is_deleted = FALSE
@@ -201,6 +206,27 @@ export async function deleteBay(campusName: string, rackNumber: number, bay: num
     return true;
   } catch (err) {
     console.error('Error deleting bay:', err);
+    return false;
+  }
+}
+
+export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
+  try {
+    const { code, deweyStart, deweyEnd, campus, rackNumber, letter, bay, face, positionX, positionZ } = data;
+    
+    // Lấy campus_id từ name
+    const campusRes = await pool.query('SELECT id FROM campuses WHERE LOWER(name) = LOWER($1)', [campus]);
+    if (campusRes.rows.length === 0) return false;
+    const campusId = campusRes.rows[0].id;
+
+    await pool.query(`
+      INSERT INTO shelves (code, dewey_start, dewey_end, campus_id, rack_number, letter, bay, face, position_x, position_z, is_deleted)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE)
+    `, [code, deweyStart, deweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ]);
+    
+    return true;
+  } catch (err) {
+    console.error('Error adding shelf:', err);
     return false;
   }
 }

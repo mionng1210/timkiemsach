@@ -22,7 +22,10 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [userStartRack, setUserStartRack] = useState<number | null>(null);
   const [isPathOverview, setIsPathOverview] = useState(false);
-  
+
+  // Position of a new shelf being added
+  const [addingShelfPos, setAddingShelfPos] = useState<{ x: number, z: number, rackNumber?: number, bay?: number, face?: number } | null>(null);
+
   // Draggable Admin Panel state
   const [adminPanelPos, setAdminPanelPos] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -144,8 +147,8 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const [editingShelf, setEditingShelf] = useState<ShelfInfo | null>(null);
 
   useEffect(() => {
-    onEditingChange?.(editingShelf !== null);
-  }, [editingShelf, onEditingChange]);
+    onEditingChange?.(editingShelf !== null || addingShelfPos !== null);
+  }, [editingShelf, addingShelfPos, onEditingChange]);
 
   const handleUpdateDewey = async (id: number, deweyStart: number, deweyEnd: number) => {
     try {
@@ -163,6 +166,63 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleAddShelf = async () => {
+    if (!addingShelfPos) return;
+
+    const rackNumber = parseInt((document.getElementById('addRackNumber') as HTMLInputElement).value);
+    const bay = parseInt((document.getElementById('addBay') as HTMLInputElement).value);
+
+    // Dữ liệu Mặt trước (Face 1)
+    const code1 = (document.getElementById('addCode1') as HTMLInputElement).value;
+    const deweyStart1 = parseFloat((document.getElementById('addDeweyStart1') as HTMLInputElement).value);
+    const deweyEnd1 = parseFloat((document.getElementById('addDeweyEnd1') as HTMLInputElement).value);
+
+    // Dữ liệu Mặt sau (Face 2)
+    const code2 = (document.getElementById('addCode2') as HTMLInputElement).value;
+    const deweyStart2 = parseFloat((document.getElementById('addDeweyStart2') as HTMLInputElement).value);
+    const deweyEnd2 = parseFloat((document.getElementById('addDeweyEnd2') as HTMLInputElement).value);
+
+    let successCount = 0;
+    let attemptCount = 0;
+
+    const addFace = async (code: string, face: number, dStart: number, dEnd: number) => {
+      if (!code || !code.trim()) return; // Bỏ qua nếu mã dãy trống
+      attemptCount++;
+      try {
+        const res = await fetch(`/api/admin/shelves`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rackNumber, code, bay, face, deweyStart: dStart, deweyEnd: dEnd, campus,
+            positionX: addingShelfPos.x, positionZ: addingShelfPos.z
+          }),
+        });
+        if (res.ok) successCount++;
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    // Tạo các mặt có thông tin
+    await addFace(code1, 1, deweyStart1, deweyEnd1);
+    await addFace(code2, 2, deweyStart2, deweyEnd2);
+
+    if (attemptCount === 0) {
+      alert('Vui lòng nhập Mã dãy cho ít nhất một mặt kệ!');
+      return;
+    }
+
+    if (successCount === attemptCount) {
+      // Refresh racks
+      const res2 = await fetch(`/api/racks?campus=${encodeURIComponent(campus)}`);
+      const data = await res2.json();
+      setRacks(data.racks || []);
+      setAddingShelfPos(null);
+    } else {
+      alert('Có lỗi xảy ra khi thêm kệ! Một số mặt có thể chưa được thêm.');
     }
   };
 
@@ -207,6 +267,29 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       setFocusFace(face);
       if (clickedShelf) {
         setEditingShelf(clickedShelf);
+        setAddingShelfPos(null);
+      } else {
+        // Tìm kệ đối diện để lấy toạ độ X, Z chính xác
+        const oppositeFace = face === 1 ? 2 : 1;
+        const oppositeShelf = rack.shelves.find((s) => s.bay === bay && s.face === oppositeFace);
+        
+        let px = 0; let pz = 0;
+        if (oppositeShelf && oppositeShelf.positionX != null && oppositeShelf.positionZ != null) {
+          px = oppositeShelf.positionX;
+          pz = oppositeShelf.positionZ;
+        } else {
+          // Tính toán vị trí cho kệ tuần tự (sequential)
+          const sorted = [...racks].sort((a, b) => {
+            if (campus === 'Thu Duc') return b.rackNumber - a.rackNumber;
+            return a.rackNumber - b.rackNumber;
+          });
+          const index = sorted.findIndex((r) => r.rackNumber === rackNumber);
+          px = campus === 'Thu Duc' ? -4.5 : 0;
+          pz = -(index - sorted.length / 2) * 4.0;
+        }
+
+        setAddingShelfPos({ x: px, z: pz, rackNumber, bay, face });
+        setEditingShelf(null);
       }
       return;
     }
@@ -273,9 +356,9 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     };
   }, [isDragging]);
 
-  // Reset admin panel position when a new shelf is selected
+  // Reset admin panel position when a new shelf or adding position is selected
   useEffect(() => {
-    if (editingShelf) {
+    if (editingShelf || addingShelfPos) {
       // Initial position: top 80px, right 24px (relative to container)
       const container = document.querySelector('.viewer-panel');
       if (container) {
@@ -283,7 +366,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         setAdminPanelPos({ x: rect.width - 320 - 24, y: 80 });
       }
     }
-  }, [editingShelf]);
+  }, [editingShelf, addingShelfPos]);
 
   return (
     <div className="viewer-panel">
@@ -291,11 +374,12 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         <div className="rack-counter">
           🏗️ {racks.length} kệ — {campus === 'Thu Duc' ? '🌳 Thủ Đức' : '🏙️ Sài Gòn'}
         </div>
-        <button 
+        <button
           className={`admin-toggle-btn ${isAdminMode ? 'active' : ''}`}
           onClick={() => {
             setIsAdminMode(!isAdminMode);
             setEditingShelf(null);
+            setAddingShelfPos(null);
           }}
         >
           {isAdminMode ? '🔓 Admin Mode: ON' : '🔒 Admin Mode: OFF'}
@@ -310,6 +394,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         onPointerMissed={() => {
           clearFocus();
           setEditingShelf(null);
+          setAddingShelfPos(null);
         }}
       >
         <color attach="background" args={['#ffffff']} />
@@ -330,6 +415,43 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
             onBayClick={handleSceneBayClick}
             onPathCalculated={setGuideWaypoints}
             isAdminMode={isAdminMode}
+            onAddRackAt={(x, z) => {
+              // Tìm kiếm các kệ lân cận để gợi ý số Rack và số Bay
+              let suggestedRack = 10;
+              let suggestedBay = 1;
+              
+              // Lấy tất cả shelves có toạ độ X, Z (custom shelves)
+              const customShelves = racks.flatMap(r => r.shelves).filter(s => s.positionX != null && s.positionZ != null);
+              
+              // 1. Dò tìm kệ trên cùng trục Z
+              const sameZShelves = customShelves.filter(s => Math.abs(s.positionZ! - z) < 0.1);
+              
+              if (sameZShelves.length > 0) {
+                // Tìm kệ gần nhất theo trục X
+                const closest = sameZShelves.reduce((prev, curr) => 
+                  Math.abs(curr.positionX! - x) < Math.abs(prev.positionX! - x) ? curr : prev
+                );
+                
+                suggestedRack = closest.rackNumber;
+                
+                // Tính toán số Bay dựa trên khoảng cách (mỗi Bay cách nhau 3 đơn vị)
+                const distX = x - closest.positionX!;
+                const bayDiff = Math.round(distX / 3.0);
+                suggestedBay = closest.bay + bayDiff;
+              }
+
+              // Đảm bảo số bay không âm
+              if (suggestedBay < 1) suggestedBay = 1;
+
+              setAddingShelfPos({ 
+                x, 
+                z, 
+                rackNumber: suggestedRack, 
+                bay: suggestedBay, 
+                face: 1 
+              });
+              setEditingShelf(null);
+            }}
           />
         </Suspense>
 
@@ -388,39 +510,39 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       </Canvas>
 
       {isAdminMode && editingShelf && (
-        <div 
-          className="admin-shelf-panel" 
+        <div
+          className="admin-shelf-panel"
           key={editingShelf.shelfId}
-          style={{ 
-            left: isMobile ? 0 : adminPanelPos.x, 
-            top: isMobile ? 'auto' : adminPanelPos.y, 
+          style={{
+            left: isMobile ? 0 : adminPanelPos.x,
+            top: isMobile ? 'auto' : adminPanelPos.y,
             bottom: isMobile ? 0 : 'auto',
             right: isMobile ? 0 : 'auto',
-            position: isMobile ? 'fixed' : 'absolute' 
+            position: isMobile ? 'fixed' : 'absolute'
           }}
         >
           <h3 style={{ cursor: 'move', userSelect: 'none' }} onMouseDown={isMobile ? undefined : handleDragMouseDown}>
             🔧 Quản lý Kệ {editingShelf.rackNumber}
           </h3>
           <p>Mã kệ: <strong>{editingShelf.code.toUpperCase()}</strong> | Bay: {editingShelf.bay} | Mặt: {editingShelf.face === 1 ? 'Trước' : 'Sau'}</p>
-          
+
           <div className="admin-form-group">
             <label>Dewey Start:</label>
-            <input 
-              type="text" 
-              defaultValue={editingShelf.deweyStart.toFixed(3)} 
+            <input
+              type="text"
+              defaultValue={editingShelf.deweyStart.toFixed(3)}
               id="deweyStart"
             />
           </div>
           <div className="admin-form-group">
             <label>Dewey End:</label>
-            <input 
-              type="text" 
-              defaultValue={editingShelf.deweyEnd.toFixed(3)} 
+            <input
+              type="text"
+              defaultValue={editingShelf.deweyEnd.toFixed(3)}
               id="deweyEnd"
             />
           </div>
-          
+
           <div className="admin-actions">
             <button className="admin-btn update" onClick={() => {
               const start = parseFloat((document.getElementById('deweyStart') as HTMLInputElement).value);
@@ -444,6 +566,84 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </div>
       )}
 
+      {isAdminMode && addingShelfPos && (
+        <div
+          className="admin-shelf-panel"
+          key={`add-${addingShelfPos.x}-${addingShelfPos.z}-${addingShelfPos.rackNumber}-${addingShelfPos.bay}-${addingShelfPos.face}`}
+          style={{
+            left: isMobile ? 0 : adminPanelPos.x,
+            top: isMobile ? 'auto' : adminPanelPos.y,
+            bottom: isMobile ? 0 : 'auto',
+            right: isMobile ? 0 : 'auto',
+            position: isMobile ? 'fixed' : 'absolute'
+          }}
+        >
+          <h3 style={{ cursor: 'move', userSelect: 'none' }} onMouseDown={isMobile ? undefined : handleDragMouseDown}>
+            ➕ Thêm Kệ Mới
+          </h3>
+          <p>Tại tọa độ: X={addingShelfPos.x.toFixed(1)}, Z={addingShelfPos.z.toFixed(1)}</p>
+
+          <div className="admin-form-group">
+            <label>Số Rack (VD: 10):</label>
+            <input type="number" id="addRackNumber" defaultValue={addingShelfPos.rackNumber ?? 10} />
+          </div>
+          <div className="admin-form-group">
+            <label>Khoang (Bay):</label>
+            <input 
+              type="number" 
+              id="addBay" 
+              defaultValue={addingShelfPos.bay ?? 1} 
+              disabled={(addingShelfPos.bay ?? 1) > 1}
+              style={(addingShelfPos.bay ?? 1) > 1 ? { 
+                backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                color: 'rgba(232, 236, 244, 0.4)',
+                cursor: 'not-allowed',
+                border: '1px solid var(--border)',
+                fontWeight: 'bold',
+                opacity: 1
+              } : {}}
+            />
+          </div>
+
+          <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt trước (1)</div>
+          <div className="admin-form-group">
+            <label>Mã dãy:</label>
+            <input type="text" id="addCode1" defaultValue={addingShelfPos.face === 1 || !addingShelfPos.face ? `${addingShelfPos.rackNumber ?? 10}a` : ""} placeholder="Bỏ trống nếu không tạo" />
+          </div>
+          <div className="admin-form-group">
+            <label>Dewey Start:</label>
+            <input type="text" id="addDeweyStart1" defaultValue="0.000" />
+          </div>
+          <div className="admin-form-group">
+            <label>Dewey End:</label>
+            <input type="text" id="addDeweyEnd1" defaultValue="999.999" />
+          </div>
+
+          <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt sau (2)</div>
+          <div className="admin-form-group">
+            <label>Mã dãy:</label>
+            <input type="text" id="addCode2" defaultValue={addingShelfPos.face === 2 ? `${addingShelfPos.rackNumber ?? 10}b` : (addingShelfPos.face === undefined ? `${addingShelfPos.rackNumber ?? 10}b` : "")} placeholder="Bỏ trống nếu không tạo" />
+          </div>
+          <div className="admin-form-group">
+            <label>Dewey Start:</label>
+            <input type="text" id="addDeweyStart2" defaultValue="0.000" />
+          </div>
+          <div className="admin-form-group">
+            <label>Dewey End:</label>
+            <input type="text" id="addDeweyEnd2" defaultValue="999.999" />
+          </div>
+
+          <div className="admin-actions">
+            <button className="admin-btn update" onClick={handleAddShelf}>
+              Thêm kệ
+            </button>
+            <button className="admin-btn cancel" onClick={() => setAddingShelfPos(null)}>
+              Hủy
+            </button>
+          </div>
+        </div>
+      )}
+
       {selectedResult && !isGuideMode && !isPathOverview && (
         <div className="viewer-info-overlay">
           <div className="info-card">
@@ -451,7 +651,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
               <div className="info-card-title">Vị trí sách</div>
               <div className="info-campus-badge">{selectedResult.campus}</div>
             </div>
-            
+
             <div className="info-stats-grid">
               <div className="stat-item">
                 <span className="stat-label">Dãy</span>
@@ -536,7 +736,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
                   if (campus === 'Sai Gon' && !displayRacks.find(r => r.rackNumber === 1)) {
                     displayRacks.push({ rackNumber: 1, bays: [1, 2, 3, 4, 5], shelves: [] });
                   }
-                  
+
                   return displayRacks
                     .sort((a, b) => a.rackNumber - b.rackNumber)
                     .filter(r => r.rackNumber !== focusRack)
@@ -617,8 +817,8 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
             Hệ thống đã tính toán đường đi tối ưu cho bạn. Nhấn nút bên dưới để bắt đầu di chuyển.
           </div>
           <div className="overview-actions">
-            <button 
-              className="start-guide-btn-inline" 
+            <button
+              className="start-guide-btn-inline"
               style={{ marginTop: 0, flex: 1 }}
               onClick={() => {
                 setIsPathOverview(false);
@@ -628,12 +828,12 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
             >
               🚶‍♂️ Bắt đầu di chuyển
             </button>
-            <button 
-              className="guide-btn guide-btn-exit" 
+            <button
+              className="guide-btn guide-btn-exit"
               style={{ width: 'auto', padding: '0 20px' }}
-              onClick={() => { 
-                setIsPathOverview(false); 
-                setShowStartPicker(true); 
+              onClick={() => {
+                setIsPathOverview(false);
+                setShowStartPicker(true);
               }}
             >
               Thoát

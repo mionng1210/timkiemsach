@@ -10,6 +10,8 @@ export interface ShelfInfo {
   letter: string;
   bay: number;
   face: number;
+  positionX?: number;
+  positionZ?: number;
 }
 
 export interface RackInfo {
