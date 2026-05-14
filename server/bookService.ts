@@ -219,10 +219,28 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
     if (campusRes.rows.length === 0) return false;
     const campusId = campusRes.rows[0].id;
 
-    await pool.query(`
-      INSERT INTO shelves (code, dewey_start, dewey_end, campus_id, rack_number, letter, bay, face, position_x, position_z, is_deleted)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE)
-    `, [code, deweyStart, deweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ]);
+    // Kiểm tra xem đã có kệ trùng mã dãy trong campus này chưa (kể cả đã xóa)
+    const existingRes = await pool.query(
+      'SELECT id FROM shelves WHERE code = $1 AND campus_id = $2', 
+      [code, campusId]
+    );
+
+    if (existingRes.rows.length > 0) {
+      // Nếu đã tồn tại (có thể là đã xóa mềm), thực hiện cập nhật lại và khôi phục
+      const shelfId = existingRes.rows[0].id;
+      await pool.query(`
+        UPDATE shelves 
+        SET dewey_start = $1, dewey_end = $2, rack_number = $3, letter = $4, 
+            bay = $5, face = $6, position_x = $7, position_z = $8, is_deleted = FALSE
+        WHERE id = $9
+      `, [deweyStart, deweyEnd, rackNumber, letter || 'A', bay, face, positionX, positionZ, shelfId]);
+    } else {
+      // Nếu chưa có, insert mới hoàn toàn
+      await pool.query(`
+        INSERT INTO shelves (code, dewey_start, dewey_end, campus_id, rack_number, letter, bay, face, position_x, position_z, is_deleted)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE)
+      `, [code, deweyStart, deweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ]);
+    }
     
     return true;
   } catch (err) {
