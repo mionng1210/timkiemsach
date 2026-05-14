@@ -390,28 +390,75 @@ function EntranceArea({ position, isDouble = false }: { position: [number, numbe
   );
 }
 
-function AdminGrid({ onAddRackAt, visible }: { onAddRackAt?: (x: number, z: number) => void, visible: boolean }) {
+function AdminGrid({ onAddRackAt, visible, racks, campus }: { onAddRackAt?: (x: number, z: number) => void, visible: boolean, racks: RackInfo[], campus: string }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const [hoverPos, setHoverPos] = useState<[number, number] | null>(null);
 
-  const [cols, rows] = useMemo(() => {
-    // Phạm vi lưới dựa trên grid thực tế
-    const xRange = Array.from({ length: 40 }, (_, i) => i - 20); // -20 to 20
-    const zRange = Array.from({ length: 30 }, (_, i) => i - 15); // -15 to 15
-    return [xRange, zRange];
-  }, []);
-
-  const total = cols.length * rows.length;
-
   const instances = useMemo(() => {
-    const data = [];
-    for (const col of cols) {
-      for (const row of rows) {
-        data.push({ cx: col * 3, cz: row * 2 });
+    // 1. Tính toán tọa độ lưới (col, row) của tất cả các kệ hiện có
+    const existingCells = new Set<string>();
+
+    // Sequential racks
+    const sortedSequential = racks.filter(r => r.shelves.some(s => s.positionX == null)).sort((a, b) => {
+      if (campus === 'Thu Duc') return b.rackNumber - a.rackNumber;
+      return a.rackNumber - b.rackNumber;
+    });
+
+    sortedSequential.forEach((rack, index) => {
+      const totalRacks = sortedSequential.length;
+      const rx = campus === 'Thu Duc' ? -4.5 : 0;
+      const rz = -(index - totalRacks / 2) * ROW_SPACING_Z;
+      const offset = campus === 'Thu Duc' ? 3.5 : 2;
+
+      rack.bays.forEach(bay => {
+        const col = Math.round(rx / 3 + bay - offset);
+        const row = Math.round(rz / 2);
+        existingCells.add(`${col},${row}`);
+      });
+    });
+
+    // Custom racks
+    racks.forEach(rack => {
+      rack.shelves.forEach(s => {
+        if (s.positionX != null && s.positionZ != null) {
+          const col = Math.round(s.positionX / 3);
+          const row = Math.round(s.positionZ / 2);
+          existingCells.add(`${col},${row}`);
+        }
+      });
+    });
+
+    // 2. Nếu không có kệ nào (campus mới), cho phép đặt ở vùng trung tâm
+    if (existingCells.size === 0) {
+      const data = [];
+      for (let col = -5; col <= 5; col++) {
+        for (let row = -5; row <= 5; row++) {
+          data.push({ cx: col * 3, cz: row * 2, col, row });
+        }
       }
+      return data;
     }
-    return data;
-  }, [cols, rows]);
+
+    // 3. Tạo các ô lưới xung quanh các kệ hiện có (bán kính 3 ô)
+    const gridData = new Map<string, { cx: number, cz: number, col: number, row: number }>();
+    const RADIUS = 3;
+
+    existingCells.forEach(cellStr => {
+      const [exCol, exRow] = cellStr.split(',').map(Number);
+      for (let col = exCol - RADIUS; col <= exCol + RADIUS; col++) {
+        for (let row = exRow - RADIUS; row <= exRow + RADIUS; row++) {
+          const key = `${col},${row}`;
+          if (!gridData.has(key)) {
+            gridData.set(key, { cx: col * 3, cz: row * 2, col, row });
+          }
+        }
+      }
+    });
+
+    return Array.from(gridData.values());
+  }, [racks, campus]);
+
+  const total = instances.length;
 
   useEffect(() => {
     if (!meshRef.current) return;
@@ -643,12 +690,8 @@ export default function BookshelfScene({
     // Check custom shelves first
     const customShelf = customShelves.find(s => s.rackNumber === highlightRack && s.bay === highlightBay && s.face === highlightFace);
     if (customShelf) {
-      const isThuDuc = campus === 'Thu Duc';
-      let zOffset = highlightFace === 1 ? 0.0 : -0.98;
-      if (isThuDuc) {
-        zOffset = highlightFace === 1 ? -0.98 : 0.0;
-      }
-      return new THREE.Vector3(customShelf.positionX! + 1.65, 2.5, customShelf.positionZ! + zOffset);
+      const faceLocalZ = highlightFace === 1 ? 0.0 : -0.98;
+      return new THREE.Vector3(customShelf.positionX! + 1.65, 2.5, customShelf.positionZ! + faceLocalZ);
     }
 
     const rp = rackPositions.find((r) => r.rackNumber === highlightRack);
@@ -724,23 +767,12 @@ export default function BookshelfScene({
     const customShelf = customShelves.find(s => s.rackNumber === highlightRack && s.bay === highlightBay && s.face === highlightFace);
     if (customShelf) {
       aisleZ = highlightFace === 1 ? customShelf.positionZ! + 2.0 : customShelf.positionZ! - 3.0;
-
-      // Ở Thủ Đức, kệ custom được xoay 180 độ nên mặt trước và mặt sau ngược hướng
-      if (campus === 'Thu Duc') {
-        aisleZ = highlightFace === 1 ? customShelf.positionZ! - 3.0 : customShelf.positionZ! + 2.0;
-      }
-      shelfX = customShelf.positionX!;
+      shelfX = customShelf.positionX! + 1.65;
     } else {
       const targetRack = rackPositions.find((r) => r.rackNumber === highlightRack);
       if (!targetRack) return null;
 
-      // Face 1 (local +Z) → Thu Duc xoay 180° → world -Z → camera cần ở z+ để nhìn thấy
-      // Face 2 (local -Z) → Thu Duc xoay 180° → world +Z → camera cần ở z- để nhìn thấy
-      if (campus === 'Thu Duc') {
-        aisleZ = highlightFace === 1 ? targetRack.z + 2.0 : targetRack.z - 3.0;
-      } else {
-        aisleZ = highlightFace === 1 ? targetRack.z + 2.0 : targetRack.z - 3.0;
-      }
+      aisleZ = highlightFace === 1 ? targetRack.z + 2.0 : targetRack.z - 3.0;
       shelfX = targetRack.x + (campus === 'Thu Duc' ? (highlightBay - 3.5) * 3 + 1.65 : (highlightBay - 2) * 3 + 1.65);
     }
 
@@ -894,7 +926,7 @@ export default function BookshelfScene({
         const isThuDuc = campus === 'Thu Duc';
         return (
           <group key={`cbay-${cbay.rackNumber}-${cbay.bay}`} position={[cbay.positionX, 0, cbay.positionZ]}>
-            <group position={[1.65, 0, -0.49]} rotation={[0, isThuDuc ? Math.PI : 0, 0]}>
+            <group position={[1.65, 0, -0.49]}>
               <group position={[-1.65, 0, 0.49]}>
                 <Bay
                   bayIndex={cbay.bay}
@@ -909,7 +941,7 @@ export default function BookshelfScene({
 
                 {/* Hiển thị nhãn số kệ nếu là khoang đầu tiên (bay === 1) */}
                 {cbay.bay === 1 && (
-                  <group position={[isThuDuc ? 3.25 : 0.05, 4.5, -0.5]} rotation={[0, isThuDuc ? Math.PI / 2 : -Math.PI / 2, 0]}>
+                  <group position={[0.05, 4.5, -0.5]} rotation={[0, -Math.PI / 2, 0]}>
                     <mesh>
                       <circleGeometry args={[0.28, 32]} />
                       <meshBasicMaterial color="#4f46e5" />
@@ -937,7 +969,7 @@ export default function BookshelfScene({
       })}
 
       {/* Grid mode overlay for building */}
-      <AdminGrid visible={!!isAdminMode} onAddRackAt={onAddRackAt} />
+      <AdminGrid visible={!!isAdminMode} onAddRackAt={onAddRackAt} racks={racks} campus={campus} />
 
       {markerPos && <HighlightMarker position={markerPos} />}
     </group>

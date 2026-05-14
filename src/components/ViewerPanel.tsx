@@ -87,23 +87,45 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   // Tính vị trí 3D của kệ đang focus (dùng focusRack/Bay/Face)
   const focusShelfPos = useMemo(() => {
     if (focusRack === null || focusBay === null || focusFace === null || racks.length === 0) return null;
-    const sorted = [...racks].sort((a, b) => {
-      if (campus === 'Thu Duc') return b.rackNumber - a.rackNumber;
-      return a.rackNumber - b.rackNumber;
-    });
-    const index = sorted.findIndex((r) => r.rackNumber === focusRack);
-    if (index === -1) return null;
 
-    const x = campus === 'Thu Duc'
-      ? -4.5 + (focusBay - 3.5) * 3 + 1.65
-      : (focusBay - 2) * 3 + 1.65;
-    const y = 2.5;
-    const z = -(index - sorted.length / 2) * 4.0;
+    // Check if it's a custom shelf
+    const customShelf = racks.flatMap(r => r.shelves).find(s => 
+      s.rackNumber === focusRack && s.bay === focusBay && s.face === focusFace && 
+      s.positionX != null && s.positionZ != null
+    );
+
+    let x: number, y: number = 2.5, z: number;
+    const faceZOffset = focusFace === 1 ? 0.0 : -0.98;
+
+    if (customShelf) {
+      x = customShelf.positionX! + 1.65;
+      z = customShelf.positionZ! + faceZOffset;
+    } else {
+      const sorted = [...racks].sort((a, b) => {
+        if (campus === 'Thu Duc') return b.rackNumber - a.rackNumber;
+        return a.rackNumber - b.rackNumber;
+      });
+      const index = sorted.findIndex((r) => r.rackNumber === focusRack);
+      if (index === -1) return null;
+
+      x = campus === 'Thu Duc'
+        ? -4.5 + (focusBay - 3.5) * 3 + 1.65
+        : (focusBay - 2) * 3 + 1.65;
+      z = -(index - sorted.length / 2) * 4.0 + faceZOffset;
+    }
+
     return new THREE.Vector3(x, y, z);
   }, [focusRack, focusBay, focusFace, racks, campus]);
 
   const shelfPos = useMemo(() => {
     if (!shelf || racks.length === 0) return new THREE.Vector3(-15, 0, -30);
+
+    const faceZOffset = shelf.face === 1 ? 0.0 : -0.98;
+
+    if (shelf.positionX != null && shelf.positionZ != null) {
+      return new THREE.Vector3(shelf.positionX + 1.65, 2.5, shelf.positionZ + faceZOffset);
+    }
+
     const sorted = [...racks].sort((a, b) => {
       if (campus === 'Thu Duc') return b.rackNumber - a.rackNumber;
       return a.rackNumber - b.rackNumber;
@@ -115,7 +137,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       ? -4.5 + (shelf.bay - 3.5) * 3 + 1.65
       : (shelf.bay - 2) * 3 + 1.65;
     const y = 2.5;
-    const z = -(index - sorted.length / 2) * 4.0; // ROW_SPACING_Z = 4.0
+    const z = -(index - sorted.length / 2) * 4.0 + faceZOffset;
     return new THREE.Vector3(x, y, z);
   }, [shelf, racks, campus]);
 
@@ -214,10 +236,9 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       }
     };
 
-    // Ở Thủ Đức, các kệ tự tạo bị xoay 180 độ, nên ta phải đảo ngược mặt trước/sau
-    const isThuDuc = campus === 'Thu Duc';
-    const face1Val = isThuDuc ? 2 : 1;
-    const face2Val = isThuDuc ? 1 : 2;
+    // Standardize: Face 1 is always Front, Face 2 is always Back
+    const face1Val = 1;
+    const face2Val = 2;
 
     // Tạo các mặt có thông tin
     await addFace(code1, face1Val, deweyStart1, deweyEnd1);
@@ -690,7 +711,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt trước (1)</div>
           <div className="admin-form-group">
             <label>Mã dãy:</label>
-            <input type="text" id="addCode1" defaultValue={addingShelfPos.face === 1 || !addingShelfPos.face ? `${addingShelfPos.rackNumber ?? 10}a` : ""} placeholder="Bỏ trống nếu không tạo" />
+            <input type="text" id="addCode1" defaultValue={`${addingShelfPos.rackNumber ?? 10}a`} placeholder="Bỏ trống nếu không tạo" />
           </div>
           <div className="admin-form-group">
             <label>Dewey Start:</label>
@@ -704,7 +725,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt sau (2)</div>
           <div className="admin-form-group">
             <label>Mã dãy:</label>
-            <input type="text" id="addCode2" defaultValue={addingShelfPos.face === 2 ? `${addingShelfPos.rackNumber ?? 10}b` : (addingShelfPos.face === undefined ? `${addingShelfPos.rackNumber ?? 10}b` : "")} placeholder="Bỏ trống nếu không tạo" />
+            <input type="text" id="addCode2" defaultValue={`${addingShelfPos.rackNumber ?? 10}b`} placeholder="Bỏ trống nếu không tạo" />
           </div>
           <div className="admin-form-group">
             <label>Dewey Start:</label>
@@ -1054,10 +1075,7 @@ function FirstPersonCamera({
         const pushBackDir = Math.sign(tp.z - finalLookAt.z);
         tp.z += pushBackDir * 1.2;
       } else {
-        // Thu Duc: aisleZ luôn đặt camera ở z+ cho face 1, z- cho face 2 (giống Sài Gòn)
-        // Nhưng do kệ xoay 180°, mặt trước (face 1) quay về z- (world), mặt sau (face 2) quay về z+ (world)
-        // → Face 1: camera ở z+ nhìn vào z- (face 1 world) = ĐÚNG, giữ pushBackDir tự nhiên
-        // → Face 2: camera ở z- nhìn vào z+ (face 2 world) = ĐÚNG, giữ pushBackDir tự nhiên
+        // Thu Duc
         tp.x -= 0.7; tp.y = 2.5;
         const pushBackDir = Math.sign(tp.z - finalLookAt.z);
         tp.z += pushBackDir * 1.2;
