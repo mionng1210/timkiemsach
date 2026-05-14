@@ -7,7 +7,8 @@ import {
   getCampuses,
   updateShelf,
   deleteShelf,
-  deleteBay
+  deleteBay,
+  addShelf
 } from './bookService.js';
 
 const app = express();
@@ -63,6 +64,13 @@ app.get('/api/search', async (req, res) => {
 });
 
 // ===== Admin APIs =====
+
+// Thêm mới kệ (có tùy chọn x, z)
+app.post('/api/admin/shelves', async (req, res) => {
+  const success = await addShelf(req.body);
+  if (success) return res.json({ success: true });
+  return res.status(500).json({ error: 'Failed to add shelf' });
+});
 
 // Cập nhật dải Dewey của 1 shelf
 app.put('/api/admin/shelves/:id', async (req, res) => {

@@ -20,6 +20,7 @@ interface BookshelfSceneProps {
   onBayClick?: (rackNumber: number, bay: number, face: number) => void;
   onPathCalculated?: (waypoints: PathWaypoint[] | null) => void;
   isAdminMode?: boolean;
+  onAddRackAt?: (x: number, z: number) => void;
 }
 
 const ROW_SPACING_Z = 4.0;    // Khoảng cách giữa các kệ (tăng lên để có lối đi rộng hơn)
@@ -52,6 +53,7 @@ function Bay({
   onBayClick,
   campus,
   isAdminMode,
+  overrideOffsetX,
 }: {
   bayIndex: number;
   mat: THREE.Material;
@@ -60,8 +62,9 @@ function Bay({
   onBayClick?: (rackNumber: number, bay: number, face: number) => void;
   campus: string;
   isAdminMode?: boolean;
+  overrideOffsetX?: number;
 }) {
-  const offsetX = campus === 'Thu Duc' ? (bayIndex - 3.5) * 3 : (bayIndex - 2) * 3;
+  const offsetX = overrideOffsetX !== undefined ? overrideOffsetX : (campus === 'Thu Duc' ? (bayIndex - 3.5) * 3 : (bayIndex - 2) * 3);
 
   // Tìm thông tin sách cho mặt trước và mặt sau của khoang này
   const face1Shelf = shelves.find(s => s.bay === bayIndex && s.face === 1);
@@ -273,7 +276,7 @@ function LowDisplayRack({ position, length = 6 }: { position: [number, number, n
         </mesh>
       ))}
       {/* Khung chứng nhận trên kệ - Lặp lại dọc theo chiều dài nếu cần */}
-      {[-(length/4), (length/4)].map((zOff, i) => (
+      {[-(length / 4), (length / 4)].map((zOff, i) => (
         <group key={i} position={[0.2, 1.4, zOff]} rotation={[0, -0.3, 0]}>
           <mesh>
             <boxGeometry args={[0.05, 0.4, 0.6]} />
@@ -387,6 +390,52 @@ function EntranceArea({ position, isDouble = false }: { position: [number, numbe
   );
 }
 
+function AdminGridCell({ cx, cz, onClick }: { cx: number, cz: number, onClick: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <mesh
+      position={[cx + 1.65, 0.05, cz - 0.49]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; }}
+      onPointerOut={() => { setHovered(false); document.body.style.cursor = 'default'; }}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+    >
+      <planeGeometry args={[3.0, 1.0]} />
+      <meshBasicMaterial
+        color={hovered ? "#4caf50" : "#3498db"}
+        transparent
+        opacity={hovered ? 0.6 : 0.15}
+        side={THREE.DoubleSide}
+        depthWrite={false}
+      />
+      {/* Viền cho ô grid */}
+      <lineSegments>
+        <edgesGeometry args={[new THREE.PlaneGeometry(3.0, 1.0)]} />
+        <lineBasicMaterial color={hovered ? "#2e7d32" : "#2980b9"} opacity={0.4} transparent />
+      </lineSegments>
+    </mesh>
+  );
+}
+
+function AdminGrid({ onAddRackAt }: { onAddRackAt?: (x: number, z: number) => void }) {
+  const cols = Array.from({ length: 30 }, (_, i) => i - 22); // -22 to 7 (cx: -66 to 21)
+  const rows = Array.from({ length: 40 }, (_, i) => i - 20); // -20 to 19 (cz: -40 to 38)
+
+  return (
+    <group position={[0, 0.01, 0]}>
+      {cols.map(col => (
+        rows.map(row => {
+          const cx = col * 3;
+          const cz = row * 2;
+          return (
+            <AdminGridCell key={`${col}-${row}`} cx={cx} cz={cz} onClick={() => onAddRackAt?.(cx, cz)} />
+          );
+        })
+      ))}
+    </group>
+  );
+}
+
 // Dùng InstancedMesh thuần Three.js để render toàn bộ bàn ghế trong 3 draw calls duy nhất
 function FurnitureInstances({
   aislePositions,
@@ -487,9 +536,45 @@ export default function BookshelfScene({
   onBayClick,
   onPathCalculated,
   isAdminMode,
+  onAddRackAt,
 }: BookshelfSceneProps) {
+
+  const { sequentialRacks, customShelves, customBays } = useMemo(() => {
+    const custom: ShelfInfo[] = [];
+    const sequential: RackInfo[] = [];
+
+    racks.forEach(rack => {
+      const seqShelves = rack.shelves.filter(s => {
+        if (s.positionX != null && s.positionZ != null) {
+          custom.push(s);
+          return false;
+        }
+        return true;
+      });
+
+      if (seqShelves.length > 0) {
+        sequential.push({
+          rackNumber: rack.rackNumber,
+          shelves: seqShelves,
+          bays: [...new Set(seqShelves.map(s => s.bay))].sort((a, b) => a - b)
+        });
+      }
+    });
+
+    const bayMap = new Map<string, { rackNumber: number, bay: number, positionX: number, positionZ: number, shelves: ShelfInfo[] }>();
+    custom.forEach(s => {
+      const key = `${s.rackNumber}-${s.bay}`;
+      if (!bayMap.has(key)) {
+        bayMap.set(key, { rackNumber: s.rackNumber, bay: s.bay, positionX: s.positionX!, positionZ: s.positionZ!, shelves: [] });
+      }
+      bayMap.get(key)!.shelves.push(s);
+    });
+
+    return { sequentialRacks: sequential, customShelves: custom, customBays: Array.from(bayMap.values()) };
+  }, [racks]);
+
   const rackPositions = useMemo(() => {
-    const sorted = [...racks].sort((a, b) => {
+    const sorted = [...sequentialRacks].sort((a, b) => {
       if (campus === 'Thu Duc') return b.rackNumber - a.rackNumber;
       return a.rackNumber - b.rackNumber;
     });
@@ -503,7 +588,7 @@ export default function BookshelfScene({
         z: -(index - totalRacks / 2) * ROW_SPACING_Z,
       };
     });
-  }, [racks]);
+  }, [sequentialRacks, campus]);
 
   const markerPos = useMemo(() => {
     if (highlightRack === null || highlightBay === null || highlightFace === null) return null;
@@ -573,6 +658,24 @@ export default function BookshelfScene({
   const pathWaypoints = useMemo(() => {
     if (highlightRack === null || highlightBay === null || highlightFace === null) return null;
 
+    // Check if it's a custom shelf first
+    const customShelf = customShelves.find(s => s.rackNumber === highlightRack && s.bay === highlightBay && s.face === highlightFace);
+    if (customShelf) {
+      let aisleZ = highlightFace === 1 ? customShelf.positionZ! + 2.0 : customShelf.positionZ! - 3.0;
+
+      // Ở Thủ Đức, kệ custom được xoay 180 độ nên mặt trước và mặt sau ngược hướng
+      if (campus === 'Thu Duc') {
+        aisleZ = highlightFace === 1 ? customShelf.positionZ! - 3.0 : customShelf.positionZ! + 2.0;
+      }
+
+      const shelfX = customShelf.positionX!;
+
+      const path: PathWaypoint[] = [];
+      path.push({ pos: new THREE.Vector3(0, 0.05, 0), msg: 'Xuất phát' }); // Placeholder start
+      path.push({ pos: new THREE.Vector3(shelfX, 0.05, aisleZ), msg: `Tới kệ tùy chỉnh` });
+      return path;
+    }
+
     const targetRack = rackPositions.find((r) => r.rackNumber === highlightRack);
     if (!targetRack) return null;
 
@@ -636,7 +739,7 @@ export default function BookshelfScene({
         // Từ quầy thủ thư Thủ Đức
         const deskX = features?.deskPos ? features.deskPos[0] : -52.5;
         const deskZ = features?.deskPos ? features.deskPos[2] : 0;
-        
+
         path.push({ pos: new THREE.Vector3(deskX, 0.05, deskZ), msg: 'Xuất phát từ quầy thủ thư' });
         path.push({ pos: new THREE.Vector3(deskX, 0.05, libraryGapZ), msg: 'Đi thẳng dọc theo hành lang chính' });
         path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Rẽ vào giữa 2 thanh chắn trước kệ' });
@@ -657,7 +760,7 @@ export default function BookshelfScene({
       path.push({ pos: new THREE.Vector3(shelfX, 0.05, aisleZ), msg: `Rẽ vào lối đi, tới vị trí sách!` });
       return path;
     }
-  }, [campus, highlightRack, highlightBay, highlightFace, rackPositions, startRackNumber]);
+  }, [campus, highlightRack, highlightBay, highlightFace, rackPositions, startRackNumber, sequentialRacks, customShelves]);
 
   // Thông báo cho component cha về đường dẫn mới
   useEffect(() => {
@@ -723,6 +826,57 @@ export default function BookshelfScene({
           )}
         </>
       )}
+
+      {/* Render custom shelves added via Admin grid */}
+      {customBays.map((cbay) => {
+        const isThuDuc = campus === 'Thu Duc';
+        return (
+          <group key={`cbay-${cbay.rackNumber}-${cbay.bay}`} position={[cbay.positionX, 0, cbay.positionZ]}>
+            <group position={[1.65, 0, -0.49]} rotation={[0, isThuDuc ? Math.PI : 0, 0]}>
+              <group position={[-1.65, 0, 0.49]}>
+                <Bay
+                  bayIndex={cbay.bay}
+                  mat={highlightRack === cbay.rackNumber && highlightBay === cbay.bay ? woodMatHL : woodMat}
+                  rackNumber={cbay.rackNumber}
+                  shelves={cbay.shelves}
+                  campus={campus}
+                  isAdminMode={isAdminMode}
+                  onBayClick={onBayClick}
+                  overrideOffsetX={0}
+                />
+
+                {/* Hiển thị nhãn số kệ nếu là khoang đầu tiên (bay === 1) */}
+                {cbay.bay === 1 && (
+                  <group position={[isThuDuc ? 3.25 : 0.05, 4.5, -0.5]} rotation={[0, isThuDuc ? Math.PI / 2 : -Math.PI / 2, 0]}>
+                    <mesh>
+                      <circleGeometry args={[0.28, 32]} />
+                      <meshBasicMaterial color="#4f46e5" />
+                    </mesh>
+                    <mesh position={[0, 0, 0.005]}>
+                      <circleGeometry args={[0.24, 32]} />
+                      <meshBasicMaterial color="#ffffff" />
+                    </mesh>
+                    <Text
+                      position={[0, 0, 0.01]}
+                      fontSize={0.24}
+                      color="#1e1b4b"
+                      fontWeight="800"
+                      anchorX="center"
+                      anchorY="middle"
+                    >
+                      {`${cbay.rackNumber}`}
+                    </Text>
+                  </group>
+                )}
+              </group>
+            </group>
+          </group>
+        );
+      })}
+
+      {/* Grid mode overlay for building */}
+      {isAdminMode && <AdminGrid onAddRackAt={onAddRackAt} />}
+
       {markerPos && <HighlightMarker position={markerPos} />}
     </group>
   );
