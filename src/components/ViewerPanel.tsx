@@ -23,6 +23,11 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const [userStartRack, setUserStartRack] = useState<number | null>(null);
   const [isPathOverview, setIsPathOverview] = useState(false);
 
+  // Authentication state — luôn yêu cầu đăng nhập lại khi tải trang
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginError, setLoginError] = useState('');
+
   // Position of a new shelf being added
   const [addingShelfPos, setAddingShelfPos] = useState<{ x: number, z: number, rackNumber?: number, bay?: number, face?: number } | null>(null);
 
@@ -144,11 +149,14 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   };
 
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [adminSubMode, setAdminSubMode] = useState<'menu' | 'add' | 'manage' | 'hidden' | null>(null);
   const [editingShelf, setEditingShelf] = useState<ShelfInfo | null>(null);
 
   useEffect(() => {
-    onEditingChange?.(editingShelf !== null || addingShelfPos !== null);
-  }, [editingShelf, addingShelfPos, onEditingChange]);
+    const isMenuOpen = isAdminMode && adminSubMode !== 'hidden' && adminSubMode !== null;
+    const isEditingOrAdding = editingShelf !== null || addingShelfPos !== null;
+    onEditingChange?.(isMenuOpen || isEditingOrAdding);
+  }, [editingShelf, addingShelfPos, isAdminMode, adminSubMode, onEditingChange]);
 
   const handleUpdateDewey = async (id: number, deweyStart: number, deweyEnd: number) => {
     try {
@@ -206,9 +214,14 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       }
     };
 
+    // Ở Thủ Đức, các kệ tự tạo bị xoay 180 độ, nên ta phải đảo ngược mặt trước/sau
+    const isThuDuc = campus === 'Thu Duc';
+    const face1Val = isThuDuc ? 2 : 1;
+    const face2Val = isThuDuc ? 1 : 2;
+
     // Tạo các mặt có thông tin
-    await addFace(code1, 1, deweyStart1, deweyEnd1);
-    await addFace(code2, 2, deweyStart2, deweyEnd2);
+    await addFace(code1, face1Val, deweyStart1, deweyEnd1);
+    await addFace(code2, face2Val, deweyStart2, deweyEnd2);
 
     if (attemptCount === 0) {
       alert('Vui lòng nhập Mã dãy cho ít nhất một mặt kệ!');
@@ -261,7 +274,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     if (!rack) return;
     const clickedShelf = rack.shelves.find((s) => s.bay === bay && s.face === face);
 
-    if (isAdminMode) {
+    if (isAdminMode && adminSubMode === 'manage') {
       setFocusRack(rackNumber);
       setFocusBay(bay);
       setFocusFace(face);
@@ -272,7 +285,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         // Tìm kệ đối diện để lấy toạ độ X, Z chính xác
         const oppositeFace = face === 1 ? 2 : 1;
         const oppositeShelf = rack.shelves.find((s) => s.bay === bay && s.face === oppositeFace);
-        
+
         let px = 0; let pz = 0;
         if (oppositeShelf && oppositeShelf.positionX != null && oppositeShelf.positionZ != null) {
           px = oppositeShelf.positionX;
@@ -374,16 +387,46 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         <div className="rack-counter">
           🏗️ {racks.length} kệ — {campus === 'Thu Duc' ? '🌳 Thủ Đức' : '🏙️ Sài Gòn'}
         </div>
-        <button
-          className={`admin-toggle-btn ${isAdminMode ? 'active' : ''}`}
-          onClick={() => {
-            setIsAdminMode(!isAdminMode);
-            setEditingShelf(null);
-            setAddingShelfPos(null);
-          }}
-        >
-          {isAdminMode ? '🔓 Admin Mode: ON' : '🔒 Admin Mode: OFF'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {isAdminMode && (
+            <button
+              className="admin-toggle-btn"
+              onClick={() => {
+                if (adminSubMode === 'hidden') {
+                  setAdminSubMode('menu');
+                } else {
+                  setAdminSubMode('hidden');
+                  setEditingShelf(null);
+                  setAddingShelfPos(null);
+                }
+              }}
+            >
+              {adminSubMode === 'hidden' ? '👁️ Hiện Menu' : '👁️‍🗨️ Ẩn Menu'}
+            </button>
+          )}
+          <button
+            className={`admin-toggle-btn ${isAdminMode ? 'active' : ''}`}
+            onClick={() => {
+              if (!isAdminMode && !isLoggedIn) {
+                setShowLoginModal(true);
+                return;
+              }
+              if (isAdminMode) {
+                // Tắt admin mode: Đăng xuất luôn
+                localStorage.removeItem('isAdmin');
+                setIsLoggedIn(false);
+                setAdminSubMode(null);
+              } else {
+                setAdminSubMode('menu');
+              }
+              setIsAdminMode(!isAdminMode);
+              setEditingShelf(null);
+              setAddingShelfPos(null);
+            }}
+          >
+            {isAdminMode ? '🔓 Admin Mode: ON' : '🔒 Admin Mode: OFF'}
+          </button>
+        </div>
       </div>
 
       <Canvas
@@ -391,6 +434,15 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         className="viewer-canvas"
         camera={{ position: campus === 'Sai Gon' ? [-34.6, 20, 30] : [-60, 25, 150], fov: 65 }}
         shadows
+        dpr={[1, 2]} // Giới hạn pixel ratio để tăng hiệu năng trên màn hình 4K
+        performance={{ min: 0.5 }} // Cho phép Three.js giảm chất lượng khi lag
+        gl={{
+          antialias: true,
+          powerPreference: "high-performance",
+          alpha: false,
+          stencil: false,
+          depth: true
+        }}
         onPointerMissed={() => {
           clearFocus();
           setEditingShelf(null);
@@ -401,7 +453,16 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         <fog attach="fog" args={['#ffffff', 100, 300]} />
 
         <ambientLight intensity={0.7} />
-        <directionalLight position={[15, 20, 10]} intensity={1} castShadow />
+        <directionalLight
+          position={[15, 20, 10]}
+          intensity={1}
+          castShadow
+          shadow-mapSize={[1024, 1024]} // Giới hạn độ phân giải shadow
+          shadow-camera-left={-100}
+          shadow-camera-right={100}
+          shadow-camera-top={100}
+          shadow-camera-bottom={-100}
+        />
         <directionalLight position={[-10, 15, -10]} intensity={0.3} />
 
         <Suspense fallback={null}>
@@ -414,26 +475,26 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
             startRackNumber={userStartRack}
             onBayClick={handleSceneBayClick}
             onPathCalculated={setGuideWaypoints}
-            isAdminMode={isAdminMode}
+            isAdminMode={isAdminMode && adminSubMode === 'add'}
             onAddRackAt={(x, z) => {
               // Tìm kiếm các kệ lân cận để gợi ý số Rack và số Bay
               let suggestedRack = 10;
               let suggestedBay = 1;
-              
+
               // Lấy tất cả shelves có toạ độ X, Z (custom shelves)
               const customShelves = racks.flatMap(r => r.shelves).filter(s => s.positionX != null && s.positionZ != null);
-              
+
               // 1. Dò tìm kệ trên cùng trục Z
               const sameZShelves = customShelves.filter(s => Math.abs(s.positionZ! - z) < 0.1);
-              
+
               if (sameZShelves.length > 0) {
                 // Tìm kệ gần nhất theo trục X
-                const closest = sameZShelves.reduce((prev, curr) => 
+                const closest = sameZShelves.reduce((prev, curr) =>
                   Math.abs(curr.positionX! - x) < Math.abs(prev.positionX! - x) ? curr : prev
                 );
-                
+
                 suggestedRack = closest.rackNumber;
-                
+
                 // Tính toán số Bay dựa trên khoảng cách (mỗi Bay cách nhau 3 đơn vị)
                 const distX = x - closest.positionX!;
                 const bayDiff = Math.round(distX / 3.0);
@@ -443,12 +504,12 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
               // Đảm bảo số bay không âm
               if (suggestedBay < 1) suggestedBay = 1;
 
-              setAddingShelfPos({ 
-                x, 
-                z, 
-                rackNumber: suggestedRack, 
-                bay: suggestedBay, 
-                face: 1 
+              setAddingShelfPos({
+                x,
+                z,
+                rackNumber: suggestedRack,
+                bay: suggestedBay,
+                face: 1
               });
               setEditingShelf(null);
             }}
@@ -502,6 +563,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
             currentStep={currentGuideStep}
             finalLookAt={shelfPos}
             campus={campus}
+            highlightFace={focusFace}
           />
         )}
         {isPathOverview && guideWaypoints && (
@@ -509,19 +571,46 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         )}
       </Canvas>
 
-      {isAdminMode && editingShelf && (
+      {/* Menu chọn chức năng Admin */}
+      {isAdminMode && adminSubMode === 'menu' && (
+        <div className="admin-menu-overlay">
+          <div className="admin-menu-card">
+            <h3>⚙️ Quản lý Kệ sách</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '15px' }}>Chọn chức năng bạn muốn thực hiện</p>
+            <button className="admin-menu-btn" onClick={() => { setAdminSubMode('add'); setEditingShelf(null); }}>
+              <span className="admin-menu-icon">➕</span>
+              <div>
+                <strong>Thêm kệ mới</strong>
+                <small>Nhấn vào ô trống trên sàn để đặt kệ</small>
+              </div>
+            </button>
+            <button className="admin-menu-btn" onClick={() => { setAdminSubMode('manage'); setAddingShelfPos(null); }}>
+              <span className="admin-menu-icon">🔧</span>
+              <div>
+                <strong>Quản lý kệ hiện có</strong>
+                <small>Nhấn vào kệ để sửa hoặc xóa</small>
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Nút quay lại menu khi đang ở sub-mode */}
+      {isAdminMode && adminSubMode && adminSubMode !== 'menu' && (
+        <button
+          className="admin-back-btn"
+          onClick={() => { setAdminSubMode('menu'); setEditingShelf(null); setAddingShelfPos(null); }}
+        >
+          ← Quay lại menu
+        </button>
+      )}
+
+      {isAdminMode && adminSubMode === 'manage' && editingShelf && (
         <div
           className="admin-shelf-panel"
           key={editingShelf.shelfId}
-          style={{
-            left: isMobile ? 0 : adminPanelPos.x,
-            top: isMobile ? 'auto' : adminPanelPos.y,
-            bottom: isMobile ? 0 : 'auto',
-            right: isMobile ? 0 : 'auto',
-            position: isMobile ? 'fixed' : 'absolute'
-          }}
         >
-          <h3 style={{ cursor: 'move', userSelect: 'none' }} onMouseDown={isMobile ? undefined : handleDragMouseDown}>
+          <h3>
             🔧 Quản lý Kệ {editingShelf.rackNumber}
           </h3>
           <p>Mã kệ: <strong>{editingShelf.code.toUpperCase()}</strong> | Bay: {editingShelf.bay} | Mặt: {editingShelf.face === 1 ? 'Trước' : 'Sau'}</p>
@@ -566,19 +655,12 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </div>
       )}
 
-      {isAdminMode && addingShelfPos && (
+      {isAdminMode && adminSubMode === 'add' && addingShelfPos && (
         <div
           className="admin-shelf-panel"
           key={`add-${addingShelfPos.x}-${addingShelfPos.z}-${addingShelfPos.rackNumber}-${addingShelfPos.bay}-${addingShelfPos.face}`}
-          style={{
-            left: isMobile ? 0 : adminPanelPos.x,
-            top: isMobile ? 'auto' : adminPanelPos.y,
-            bottom: isMobile ? 0 : 'auto',
-            right: isMobile ? 0 : 'auto',
-            position: isMobile ? 'fixed' : 'absolute'
-          }}
         >
-          <h3 style={{ cursor: 'move', userSelect: 'none' }} onMouseDown={isMobile ? undefined : handleDragMouseDown}>
+          <h3>
             ➕ Thêm Kệ Mới
           </h3>
           <p>Tại tọa độ: X={addingShelfPos.x.toFixed(1)}, Z={addingShelfPos.z.toFixed(1)}</p>
@@ -589,12 +671,12 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           </div>
           <div className="admin-form-group">
             <label>Khoang (Bay):</label>
-            <input 
-              type="number" 
-              id="addBay" 
-              defaultValue={addingShelfPos.bay ?? 1} 
+            <input
+              type="number"
+              id="addBay"
+              defaultValue={addingShelfPos.bay ?? 1}
               disabled={(addingShelfPos.bay ?? 1) > 1}
-              style={(addingShelfPos.bay ?? 1) > 1 ? { 
+              style={(addingShelfPos.bay ?? 1) > 1 ? {
                 backgroundColor: 'rgba(0, 0, 0, 0.3)',
                 color: 'rgba(232, 236, 244, 0.4)',
                 cursor: 'not-allowed',
@@ -841,6 +923,81 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           </div>
         </div>
       )}
+      {showLoginModal && (
+        <div className="guide-overlay" style={{ zIndex: 9999 }}>
+          <div className="guide-modal" style={{ maxWidth: '400px', padding: '30px', textAlign: 'center' }}>
+            <button className="guide-close" onClick={() => { setShowLoginModal(false); setLoginError(''); }}>×</button>
+            <div className="guide-icon" style={{ fontSize: '40px', marginBottom: '10px' }}>🔐</div>
+            <h2 style={{ fontSize: '20px', marginBottom: '10px', color: 'var(--text-primary)' }}>Đăng nhập Admin</h2>
+            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '20px' }}>Vui lòng đăng nhập tài khoản để vào hệ thống quản lý.</p>
+
+            <input
+              type="text"
+              id="adminUsernameInput"
+              placeholder="Tên đăng nhập"
+              style={{
+                width: '100%', padding: '12px', borderRadius: '8px',
+                border: '1px solid var(--border)', background: 'var(--bg-primary)',
+                color: 'var(--text-primary)', marginBottom: '10px', fontSize: '14px'
+              }}
+            />
+            <input
+              type="password"
+              id="adminPasswordInput"
+              placeholder="Mật khẩu"
+              style={{
+                width: '100%', padding: '12px', borderRadius: '8px',
+                border: '1px solid var(--border)', background: 'var(--bg-primary)',
+                color: 'var(--text-primary)', marginBottom: '10px', fontSize: '14px'
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  document.getElementById('loginSubmitBtn')?.click();
+                }
+              }}
+            />
+
+            {loginError && <div style={{ color: '#ef4444', fontSize: '13px', marginBottom: '15px' }}>{loginError}</div>}
+
+            <button
+              id="loginSubmitBtn"
+              className="guide-start-btn"
+              style={{ marginTop: loginError ? '0' : '10px' }}
+              onClick={async () => {
+                const username = (document.getElementById('adminUsernameInput') as HTMLInputElement).value;
+                const password = (document.getElementById('adminPasswordInput') as HTMLInputElement).value;
+                if (!username || !password) {
+                  setLoginError('Vui lòng nhập đầy đủ thông tin!');
+                  return;
+                }
+                try {
+                  const res = await fetch('http://localhost:3001/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    localStorage.setItem('isAdmin', 'true');
+                    setIsLoggedIn(true);
+                    setIsAdminMode(true);
+                    setAdminSubMode('menu');
+                    setShowLoginModal(false);
+                    setLoginError('');
+                  } else {
+                    setLoginError(data.message || 'Sai thông tin đăng nhập!');
+                  }
+                } catch (error) {
+                  console.error('Lỗi gọi API đăng nhập:', error);
+                  setLoginError('Lỗi kết nối đến máy chủ!');
+                }
+              }}
+            >
+              Đăng nhập
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -849,12 +1006,14 @@ function FirstPersonCamera({
   waypoints,
   currentStep,
   finalLookAt,
-  campus
+  campus,
+  highlightFace
 }: {
   waypoints: PathWaypoint[];
   currentStep: number;
   finalLookAt: THREE.Vector3;
   campus: string;
+  highlightFace: number | null;
 }) {
   const { camera } = useThree();
   const lerpStepRef = useRef(currentStep);
@@ -895,9 +1054,13 @@ function FirstPersonCamera({
         const pushBackDir = Math.sign(tp.z - finalLookAt.z);
         tp.z += pushBackDir * 1.2;
       } else {
-        tp.x = finalLookAt.x - 1.5; tp.y = 2.8;
+        // Thu Duc: aisleZ luôn đặt camera ở z+ cho face 1, z- cho face 2 (giống Sài Gòn)
+        // Nhưng do kệ xoay 180°, mặt trước (face 1) quay về z- (world), mặt sau (face 2) quay về z+ (world)
+        // → Face 1: camera ở z+ nhìn vào z- (face 1 world) = ĐÚNG, giữ pushBackDir tự nhiên
+        // → Face 2: camera ở z- nhìn vào z+ (face 2 world) = ĐÚNG, giữ pushBackDir tự nhiên
+        tp.x -= 0.7; tp.y = 2.5;
         const pushBackDir = Math.sign(tp.z - finalLookAt.z);
-        tp.z += pushBackDir * 0.8;
+        tp.z += pushBackDir * 1.2;
       }
     }
 
