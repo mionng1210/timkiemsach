@@ -89,8 +89,8 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     if (focusRack === null || focusBay === null || focusFace === null || racks.length === 0) return null;
 
     // Check if it's a custom shelf
-    const customShelf = racks.flatMap(r => r.shelves).find(s => 
-      s.rackNumber === focusRack && s.bay === focusBay && s.face === focusFace && 
+    const customShelf = racks.flatMap(r => r.shelves).find(s =>
+      s.rackNumber === focusRack && s.bay === focusBay && s.face === focusFace &&
       s.positionX != null && s.positionZ != null
     );
 
@@ -101,16 +101,15 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       x = customShelf.positionX! + 1.65;
       z = customShelf.positionZ! + faceZOffset;
     } else {
-      const sorted = [...racks].sort((a, b) => {
+      const sequentialRacks = racks.filter(r => r.shelves.some(s => s.positionX == null));
+      const sorted = [...sequentialRacks].sort((a, b) => {
         if (campus === 'Thu Duc') return b.rackNumber - a.rackNumber;
         return a.rackNumber - b.rackNumber;
       });
       const index = sorted.findIndex((r) => r.rackNumber === focusRack);
       if (index === -1) return null;
 
-      x = campus === 'Thu Duc'
-        ? -4.5 + (focusBay - 3.5) * 3 + 1.65
-        : (focusBay - 2) * 3 + 1.65;
+      x = (focusBay - 1) * 3 + 1.65;
       z = -(index - sorted.length / 2) * 4.0 + faceZOffset;
     }
 
@@ -126,16 +125,15 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       return new THREE.Vector3(shelf.positionX + 1.65, 2.5, shelf.positionZ + faceZOffset);
     }
 
-    const sorted = [...racks].sort((a, b) => {
+    const sequentialRacks = racks.filter(r => r.shelves.some(s => s.positionX == null));
+    const sorted = [...sequentialRacks].sort((a, b) => {
       if (campus === 'Thu Duc') return b.rackNumber - a.rackNumber;
       return a.rackNumber - b.rackNumber;
     });
     const index = sorted.findIndex((r) => r.rackNumber === shelf.rackNumber);
     if (index === -1) return new THREE.Vector3(0, 0, 0);
 
-    const x = campus === 'Thu Duc'
-      ? -4.5 + (shelf.bay - 3.5) * 3 + 1.65
-      : (shelf.bay - 2) * 3 + 1.65;
+    const x = (shelf.bay - 1) * 3 + 1.65;
     const y = 2.5;
     const z = -(index - sorted.length / 2) * 4.0 + faceZOffset;
     return new THREE.Vector3(x, y, z);
@@ -145,12 +143,13 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     if (!shelf || racks.length === 0) return new THREE.Vector3(-15, 0, -30);
 
     if (campus === 'Sai Gon') {
-      const sorted = [...racks].sort((a, b) => a.rackNumber - b.rackNumber);
+      const sequentialRacks = racks.filter(r => r.shelves.some(s => s.positionX == null));
+      const sorted = [...sequentialRacks].sort((a, b) => a.rackNumber - b.rackNumber);
       // Đặt mục tiêu ở giữa không gian từ cửa ra vào tới kệ sách để dễ nhìn đường đi
       const rack2Index = sorted.findIndex((r) => r.rackNumber === 2);
       const rack2Z = rack2Index !== -1 ? -(rack2Index - sorted.length / 2) * 4.0 : 0;
       const startZ = rack2Z + 10;
-      const startX = -34.6;
+      const startX = -31.6;
 
       return new THREE.Vector3((startX + shelfPos.x) / 2, shelfPos.y, (startZ + shelfPos.z) / 2);
     }
@@ -214,6 +213,76 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     const code2 = (document.getElementById('addCode2') as HTMLInputElement).value;
     const deweyStart2 = parseFloat((document.getElementById('addDeweyStart2') as HTMLInputElement).value);
     const deweyEnd2 = parseFloat((document.getElementById('addDeweyEnd2') as HTMLInputElement).value);
+
+    // 1. Ràng buộc Bay phải dương và theo chuẩn toạ độ
+    if (isNaN(bay) || bay <= 0) {
+      alert('Số Bay phải là số nguyên dương (1, 2, 3...)!');
+      return;
+    }
+
+    // Kiểm tra giới hạn phía trước (Bay 1 là giới hạn cuối cùng)
+    const minX = -0.1;
+    if (addingShelfPos.x < minX) {
+      alert(`Vị trí này nằm ngoài phạm vi cho phép (phía trước Bay 1). Vui lòng chọn vị trí khác.`);
+      return;
+    }
+
+    // 2. Kiểm tra Dewey Start < Dewey End cho cả 2 mặt
+    if (code1 && deweyStart1 >= deweyEnd1) {
+      alert(`Lỗi mặt trước: Dewey Start (${deweyStart1}) phải nhỏ hơn Dewey End (${deweyEnd1})`);
+      return;
+    }
+    if (code2 && deweyStart2 >= deweyEnd2) {
+      alert(`Lỗi mặt sau: Dewey Start (${deweyStart2}) phải nhỏ hơn Dewey End (${deweyEnd2})`);
+      return;
+    }
+
+    // 3. Ràng buộc về thứ tự Bay và vị trí vật lý
+    const existingRack = racks.find(r => r.rackNumber === rackNumber);
+    if (existingRack) {
+      // Kiểm tra trùng Bay
+      if (existingRack.bays.includes(bay)) {
+        alert(`Kệ ${rackNumber} đã có Bay ${bay}. Vui lòng chọn số Bay khác.`);
+        return;
+      }
+
+      // Kiểm tra căn lề Z-axis (Tất cả các khoang cùng kệ phải cùng toạ độ Z)
+      const firstShelf = existingRack.shelves.find(s => s.positionZ != null);
+      if (firstShelf && Math.abs(addingShelfPos.z - firstShelf.positionZ!) > 0.1) {
+        alert(`Lỗi căn lề: Kệ số ${rackNumber} đang nằm ở trục Z = ${firstShelf.positionZ!.toFixed(2)}. Bạn không thể đặt khoang mới ở trục Z = ${addingShelfPos.z.toFixed(2)}.`);
+        return;
+      }
+
+      for (const s of existingRack.shelves) {
+        if (s.positionX == null) continue;
+
+        // Nếu bay mới lớn hơn bay cũ nhưng x mới lại nhỏ hơn x cũ -> Vô lý
+        if (bay > s.bay && addingShelfPos.x < s.positionX - 0.1) {
+          alert(`Lỗi logic: Bay ${bay} không thể nằm phía trước Bay ${s.bay}.`);
+          return;
+        }
+
+        // Nếu bay mới nhỏ hơn bay cũ nhưng x mới lại lớn hơn x cũ -> Vô lý
+        if (bay < s.bay && addingShelfPos.x > s.positionX + 0.1) {
+          alert(`Lỗi logic: Bay ${bay} không thể nằm phía sau Bay ${s.bay}.`);
+          return;
+        }
+
+      }
+    }
+
+    // 5. Kiểm tra tính duy nhất của Mã dãy kệ (Code) trong toàn Campus
+    const allShelves = racks.flatMap(r => r.shelves);
+    const duplicateCode = (c: string) => allShelves.find(s => s.code.toLowerCase() === c.toLowerCase() && (s.rackNumber !== rackNumber || s.bay !== bay));
+    
+    if (code1 && duplicateCode(code1)) {
+      const dup = duplicateCode(code1)!;
+      if (!confirm(`Cảnh báo: Mã dãy "${code1}" đã được sử dụng tại Kệ ${dup.rackNumber}, Bay ${dup.bay}. Bạn có chắc chắn muốn tiếp tục?`)) return;
+    }
+    if (code2 && duplicateCode(code2)) {
+      const dup = duplicateCode(code2)!;
+      if (!confirm(`Cảnh báo: Mã dãy "${code2}" đã được sử dụng tại Kệ ${dup.rackNumber}, Bay ${dup.bay}. Bạn có chắc chắn muốn tiếp tục?`)) return;
+    }
 
     let successCount = 0;
     let attemptCount = 0;
@@ -318,7 +387,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
             return a.rackNumber - b.rackNumber;
           });
           const index = sorted.findIndex((r) => r.rackNumber === rackNumber);
-          px = campus === 'Thu Duc' ? -4.5 : 0;
+          px = 0;
           pz = -(index - sorted.length / 2) * 4.0;
         }
 
@@ -505,25 +574,23 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
               // Lấy tất cả shelves có toạ độ X, Z (custom shelves)
               const customShelves = racks.flatMap(r => r.shelves).filter(s => s.positionX != null && s.positionZ != null);
 
-              // 1. Dò tìm kệ trên cùng trục Z
-              const sameZShelves = customShelves.filter(s => Math.abs(s.positionZ! - z) < 0.1);
+               // Tìm kệ cùng trục Z để lấy RackNumber
+               const sameZShelves = customShelves.filter(s => Math.abs(s.positionZ! - z) < 0.1);
+               if (sameZShelves.length > 0) {
+                 suggestedRack = sameZShelves[0].rackNumber;
+               }
 
-              if (sameZShelves.length > 0) {
-                // Tìm kệ gần nhất theo trục X
-                const closest = sameZShelves.reduce((prev, curr) =>
-                  Math.abs(curr.positionX! - x) < Math.abs(prev.positionX! - x) ? curr : prev
-                );
+               // 2. Tính số Bay mặc định dựa trên toạ độ X chuẩn
+               // Thu Duc: x = -12 là bay 1, x = -9 là bay 2...
+               // Sai Gon: x = -1.35 là bay 1, x = 1.65 là bay 2...
+               const startX = 0;
+               suggestedBay = Math.round((x - startX) / 3.0) + 1;
 
-                suggestedRack = closest.rackNumber;
-
-                // Tính toán số Bay dựa trên khoảng cách (mỗi Bay cách nhau 3 đơn vị)
-                const distX = x - closest.positionX!;
-                const bayDiff = Math.round(distX / 3.0);
-                suggestedBay = closest.bay + bayDiff;
-              }
-
-              // Đảm bảo số bay không âm
-              if (suggestedBay < 1) suggestedBay = 1;
+               // 3. Ràng buộc: Không cho tạo phía trước Bay 1
+               if (suggestedBay < 1 || x < (startX - 0.1)) {
+                 alert('Vị trí này nằm ngoài phạm vi cho phép (phía trước Bay 1). Vui lòng chọn vị trí khác.');
+                 return;
+               }
 
               setAddingShelfPos({
                 x,
@@ -696,15 +763,15 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
               type="number"
               id="addBay"
               defaultValue={addingShelfPos.bay ?? 1}
-              disabled={(addingShelfPos.bay ?? 1) > 1}
-              style={(addingShelfPos.bay ?? 1) > 1 ? {
+              disabled={true}
+              style={{
                 backgroundColor: 'rgba(0, 0, 0, 0.3)',
                 color: 'rgba(232, 236, 244, 0.4)',
                 cursor: 'not-allowed',
                 border: '1px solid var(--border)',
                 fontWeight: 'bold',
                 opacity: 1
-              } : {}}
+              }}
             />
           </div>
 
