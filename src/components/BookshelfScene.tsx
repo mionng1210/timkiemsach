@@ -64,7 +64,7 @@ function Bay({
   isAdminMode?: boolean;
   overrideOffsetX?: number;
 }) {
-  const offsetX = overrideOffsetX !== undefined ? overrideOffsetX : (campus === 'Thu Duc' ? (bayIndex - 3.5) * 3 : (bayIndex - 2) * 3);
+  const offsetX = overrideOffsetX !== undefined ? overrideOffsetX : (bayIndex - 1) * 3;
 
   // Tìm thông tin sách cho mặt trước và mặt sau của khoang này
   const face1Shelf = shelves.find(s => s.bay === bayIndex && s.face === 1);
@@ -214,9 +214,8 @@ function Rack({
   const minBay = bays.length > 0 ? Math.min(...bays) : 1;
   const maxBay = bays.length > 0 ? Math.max(...bays) : 5;
   const centerBay = (minBay + maxBay) / 2;
-  const centerX = (centerBay - 2) * 3 + 1.65;
-
-  const labelX = campus === 'Thu Duc' ? -7.45 : -2.95;
+  const labelXMin = (minBay - 1) * 3 + 0.05;
+  const labelXMax = (maxBay - 1) * 3 + 3.25;
 
   return (
     <group
@@ -227,26 +226,32 @@ function Rack({
         <Bay key={b} bayIndex={b} mat={mat} rackNumber={rackNumber} shelves={shelves} onBayClick={onBayClick} campus={campus} isAdminMode={isAdminMode} />
       ))}
 
-      {/* Nhãn số kệ ở đầu dãy (phía ngoài) - Hình tròn xanh biển, số trắng */}
-      <group position={[labelX, 4.5, -0.5]} rotation={[0, -Math.PI / 2, 0]}>
-        {/* Tấm bảng nền hình tròn */}
+      {/* Nhãn số kệ ở đầu dãy (Trái) */}
+      <group position={[labelXMin, 4.5, -0.5]} rotation={[0, -Math.PI / 2, 0]}>
         <mesh>
-          <circleGeometry args={[0.28, 32]} />
+          <circleGeometry args={[0.19, 32]} />
           <meshBasicMaterial color="#4f46e5" />
         </mesh>
         <mesh position={[0, 0, 0.005]}>
-          <circleGeometry args={[0.24, 32]} />
+          <circleGeometry args={[0.16, 32]} />
           <meshBasicMaterial color="#ffffff" />
         </mesh>
-        {/* Chữ số kệ */}
-        <Text
-          position={[0, 0, 0.01]}
-          fontSize={0.24}
-          color="#1e1b4b"
-          fontWeight="800"
-          anchorX="center"
-          anchorY="middle"
-        >
+        <Text position={[0, 0, 0.01]} fontSize={0.16} color="#1e1b4b" fontWeight="800" anchorX="center" anchorY="middle">
+          {`${rackNumber}`}
+        </Text>
+      </group>
+
+      {/* Nhãn số kệ ở cuối dãy (Phải) */}
+      <group position={[labelXMax, 4.5, -0.5]} rotation={[0, Math.PI / 2, 0]}>
+        <mesh>
+          <circleGeometry args={[0.19, 32]} />
+          <meshBasicMaterial color="#4f46e5" />
+        </mesh>
+        <mesh position={[0, 0, 0.005]}>
+          <circleGeometry args={[0.16, 32]} />
+          <meshBasicMaterial color="#ffffff" />
+        </mesh>
+        <Text position={[0, 0, 0.01]} fontSize={0.16} color="#1e1b4b" fontWeight="800" anchorX="center" anchorY="middle">
           {`${rackNumber}`}
         </Text>
       </group>
@@ -395,68 +400,32 @@ function AdminGrid({ onAddRackAt, visible, racks, campus }: { onAddRackAt?: (x: 
   const [hoverPos, setHoverPos] = useState<[number, number] | null>(null);
 
   const instances = useMemo(() => {
-    // 1. Tính toán tọa độ lưới (col, row) của tất cả các kệ hiện có
-    const existingCells = new Set<string>();
+    const data = [];
+    
+    // Grid settings: 10 bays (x: 0 to 27), 50 rows (z)
+    const numBays = 10;
+    const numRows = 50;
 
-    // Sequential racks
-    const sortedSequential = racks.filter(r => r.shelves.some(s => s.positionX == null)).sort((a, b) => {
-      if (campus === 'Thu Duc') return b.rackNumber - a.rackNumber;
-      return a.rackNumber - b.rackNumber;
-    });
+    // We use the same Z formula as the sequential racks to stay aligned with the library floor
+    // Thu Duc has 13 sequential racks (1-13), center is 6.5
+    // Sai Gon has 12 sequential racks (2-13), center is 6.0
+    const zOffset = campus === 'Thu Duc' ? 6.5 : 17.0; 
 
-    sortedSequential.forEach((rack, index) => {
-      const totalRacks = sortedSequential.length;
-      const rx = campus === 'Thu Duc' ? -4.5 : 0;
-      const rz = -(index - totalRacks / 2) * ROW_SPACING_Z;
-      const offset = campus === 'Thu Duc' ? 3.5 : 2;
-
-      rack.bays.forEach(bay => {
-        const col = Math.round(rx / 3 + bay - offset);
-        const row = Math.round(rz / 2);
-        existingCells.add(`${col},${row}`);
-      });
-    });
-
-    // Custom racks
-    racks.forEach(rack => {
-      rack.shelves.forEach(s => {
-        if (s.positionX != null && s.positionZ != null) {
-          const col = Math.round(s.positionX / 3);
-          const row = Math.round(s.positionZ / 2);
-          existingCells.add(`${col},${row}`);
-        }
-      });
-    });
-
-    // 2. Nếu không có kệ nào (campus mới), cho phép đặt ở vùng trung tâm
-    if (existingCells.size === 0) {
-      const data = [];
-      for (let col = -5; col <= 5; col++) {
-        for (let row = -5; row <= 5; row++) {
-          data.push({ cx: col * 3, cz: row * 2, col, row });
-        }
+    for (let col = 0; col < numBays; col++) {
+      for (let row = 0; row < numRows; row++) {
+        const cx = col * 3.0;
+        // Thủ Đức: Z tăng dần (theo hướng vào sâu thư viện)
+        // Sài Gòn: Z giảm dần
+        const cz = campus === 'Thu Duc' 
+          ? (row - zOffset) * 4.0 
+          : -(row - zOffset) * 4.0;
+        
+        data.push({ cx, cz, col, row });
       }
-      return data;
     }
 
-    // 3. Tạo các ô lưới xung quanh các kệ hiện có (bán kính 3 ô)
-    const gridData = new Map<string, { cx: number, cz: number, col: number, row: number }>();
-    const RADIUS = 3;
-
-    existingCells.forEach(cellStr => {
-      const [exCol, exRow] = cellStr.split(',').map(Number);
-      for (let col = exCol - RADIUS; col <= exCol + RADIUS; col++) {
-        for (let row = exRow - RADIUS; row <= exRow + RADIUS; row++) {
-          const key = `${col},${row}`;
-          if (!gridData.has(key)) {
-            gridData.set(key, { cx: col * 3, cz: row * 2, col, row });
-          }
-        }
-      }
-    });
-
-    return Array.from(gridData.values());
-  }, [racks, campus]);
+    return data;
+  }, []);
 
   const total = instances.length;
 
@@ -678,7 +647,7 @@ export default function BookshelfScene({
         rackNumber: rack.rackNumber,
         bays: rack.bays,
         shelves: rack.shelves,
-        x: campus === 'Thu Duc' ? -4.5 : 0,
+        x: 0,
         z: -(index - totalRacks / 2) * ROW_SPACING_Z,
       };
     });
@@ -696,7 +665,7 @@ export default function BookshelfScene({
 
     const rp = rackPositions.find((r) => r.rackNumber === highlightRack);
     if (!rp) return null;
-    const bayLocalX = campus === 'Thu Duc' ? (highlightBay - 3.5) * 3 + 1.65 : (highlightBay - 2) * 3 + 1.65;
+    const bayLocalX = (highlightBay - 1) * 3 + 1.65;
     const faceLocalZ = highlightFace === 1 ? 0.0 : -0.98;
     return new THREE.Vector3(rp.x + bayLocalX, 2.5, rp.z + faceLocalZ);
   }, [highlightRack, highlightBay, highlightFace, rackPositions, customShelves, campus]);
@@ -715,14 +684,14 @@ export default function BookshelfScene({
       ];
 
       return {
-        deskPos: [-15, 0, rack2.z + 10] as [number, number, number],
-        entrancePos: [-34.6, 0, rack2.z + 10] as [number, number, number],
+        deskPos: [-12, 0, rack2.z + 10] as [number, number, number],
+        entrancePos: [-31.6, 0, rack2.z + 10] as [number, number, number],
         rack1Pos: [0, 0, rack2.z + 4] as [number, number, number],
         aislePositions: aisleZs.flatMap(z => [
-          [-20, 0, z] as [number, number, number],
-          [-10, 0, z] as [number, number, number]
+          [-17, 0, z] as [number, number, number],
+          [-7, 0, z] as [number, number, number]
         ]),
-        wallRowPositions: aisleZs.map(z => [-34.6, 0, z] as [number, number, number])
+        wallRowPositions: aisleZs.map(z => [-31.6, 0, z] as [number, number, number])
       };
     } else {
       // Thủ Đức Campus: "ngang hàng với dãy 10 nhưng khoảng cách bằng 2,5 bộ bàn ghế"
@@ -731,26 +700,26 @@ export default function BookshelfScene({
       if (!rack1 || !rack13) return null;
 
       return {
-        deskPos: [-52.5, 0, rack1.z] as [number, number, number],
-        entrancePos: [-52.5, 0, rack13.z] as [number, number, number],
+        deskPos: [-40.5, 0, -22] as [number, number, number],
+        entrancePos: [-40.5, 0, 26] as [number, number, number],
         rack1Pos: null,
         aislePositions: [
           // Khu vực giữa kệ và quầy (8 bộ)
-          [-23, 0, 24] as [number, number, number], [-35, 0, 24] as [number, number, number],
-          [-23, 0, 18] as [number, number, number], [-35, 0, 18] as [number, number, number],
-          [-23, 0, -8] as [number, number, number], [-35, 0, -8] as [number, number, number],
-          [-23, 0, -16] as [number, number, number], [-35, 0, -16] as [number, number, number],
+          [-11, 0, 16] as [number, number, number], [-23, 0, 16] as [number, number, number],
+          [-11, 0, 8] as [number, number, number], [-23, 0, 8] as [number, number, number],
+          [-11, 0, -4] as [number, number, number], [-23, 0, -4] as [number, number, number],
+          [-11, 0, -12] as [number, number, number], [-23, 0, -12] as [number, number, number],
 
-          // Khu vực phía bên trái quầy thủ thư (16 bộ) - Căn đối khoảng cách 17.5m từ quầy
-          [-70, 0, 24] as [number, number, number], [-82, 0, 24] as [number, number, number], [-94, 0, 24] as [number, number, number], [-106, 0, 24] as [number, number, number],
-          [-70, 0, 18] as [number, number, number], [-82, 0, 18] as [number, number, number], [-94, 0, 18] as [number, number, number], [-106, 0, 18] as [number, number, number],
-          [-70, 0, -8] as [number, number, number], [-82, 0, -8] as [number, number, number], [-94, 0, -8] as [number, number, number], [-106, 0, -8] as [number, number, number],
-          [-70, 0, -16] as [number, number, number], [-82, 0, -16] as [number, number, number], [-94, 0, -16] as [number, number, number], [-106, 0, -16] as [number, number, number]
+          // Khu vực phía bên trái quầy thủ thư (16 bộ)
+          [-58, 0, 16] as [number, number, number], [-70, 0, 16] as [number, number, number], [-82, 0, 16] as [number, number, number], [-94, 0, 16] as [number, number, number],
+          [-58, 0, 8] as [number, number, number], [-70, 0, 8] as [number, number, number], [-82, 0, 8] as [number, number, number], [-94, 0, 8] as [number, number, number],
+          [-58, 0, -4] as [number, number, number], [-70, 0, -4] as [number, number, number], [-82, 0, -4] as [number, number, number], [-94, 0, -4] as [number, number, number],
+          [-58, 0, -12] as [number, number, number], [-70, 0, -12] as [number, number, number], [-82, 0, -12] as [number, number, number], [-94, 0, -12] as [number, number, number]
         ],
         wallRowPositions: [],
         lowRackPositions: [
-          { pos: [-15, 0, (30 + 14) / 2], length: 16 },
-          { pos: [-15, 0, (6 - 26) / 2], length: 32 }
+          { pos: [-3, 0, 12], length: 16 },
+          { pos: [-3, 0, -8], length: 16 }
         ]
       };
     }
@@ -773,7 +742,7 @@ export default function BookshelfScene({
       if (!targetRack) return null;
 
       aisleZ = highlightFace === 1 ? targetRack.z + 2.0 : targetRack.z - 3.0;
-      shelfX = targetRack.x + (campus === 'Thu Duc' ? (highlightBay - 3.5) * 3 + 1.65 : (highlightBay - 2) * 3 + 1.65);
+      shelfX = targetRack.x + (highlightBay - 1) * 3 + 1.65;
     }
 
     // Tìm vị trí kệ xuất phát (nếu có)
@@ -784,8 +753,8 @@ export default function BookshelfScene({
     if (campus === 'Sai Gon') {
       const rack2 = rackPositions.find(r => r.rackNumber === 2);
       if (!rack2) return null;
-      const frontOfDeskZ = rack2.z + 7.5;
-      const mainCorridorX = -4.5;
+      const frontOfDeskZ = rack2.z + 7.3; // Giảm độ lệch detour xuống 1/3
+      const mainCorridorX = -1.5;
 
       const path: PathWaypoint[] = [];
 
@@ -810,7 +779,7 @@ export default function BookshelfScene({
         path.push({ pos: new THREE.Vector3(mainCorridorX, 0.05, startAisleZ), msg: `Bắt đầu từ lối đi kệ số ${startRackNumber}` });
       } else {
         // Bắt đầu từ cửa ra vào
-        const startX = -34.6;
+        const startX = -31.6;
         const startZ = rack2.z + 10;
         path.push({ pos: new THREE.Vector3(startX, 0.05, startZ), msg: 'Cửa ra vào' });
         path.push({ pos: new THREE.Vector3(startX, 0.05, frontOfDeskZ), msg: 'Tiến vào sảnh chính' });
@@ -824,30 +793,30 @@ export default function BookshelfScene({
       // Thu Duc
       const rack13 = rackPositions.find(r => r.rackNumber === 13);
       if (!rack13) return null;
-      const bookshelfEntryX = -13.5;
-      const libraryGapZ = 10;
+      const bookshelfEntryX = -1.5; // Hành lang sát các kệ sách
+      const libraryGapZ = 2; // Khoảng trống giữa 2 khối bàn ghế
 
       const path: PathWaypoint[] = [];
 
       if (startRackNumber === -1) {
         // Từ quầy thủ thư Thủ Đức
-        const deskX = features?.deskPos ? features.deskPos[0] : -52.5;
-        const deskZ = features?.deskPos ? features.deskPos[2] : 0;
+        const deskX = features?.deskPos ? features.deskPos[0] : -40.5;
+        const deskZ = features?.deskPos ? features.deskPos[2] : -22;
 
         path.push({ pos: new THREE.Vector3(deskX, 0.05, deskZ), msg: 'Xuất phát từ quầy thủ thư' });
         path.push({ pos: new THREE.Vector3(deskX, 0.05, libraryGapZ), msg: 'Đi thẳng dọc theo hành lang chính' });
-        path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Rẽ vào giữa 2 thanh chắn trước kệ' });
+        path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Rẽ vào hành lang giữa kệ và bàn ghế' });
       } else if (startRack) {
         // Bắt đầu từ kệ checkpoint
         const startAisleZ = startRack.z + 2.0;
         path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, startAisleZ), msg: `Bắt đầu từ lối đi kệ số ${startRackNumber}` });
       } else {
-        // Bắt đầu từ thang máy
-        const startX = -52.5;
-        const startZ = rack13.z;
-        path.push({ pos: new THREE.Vector3(startX, 0.05, startZ), msg: 'Bắt đầu từ thang máy' });
-        path.push({ pos: new THREE.Vector3(startX, 0.05, libraryGapZ), msg: 'Bước ra khỏi thang máy và đi thẳng' });
-        path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Rẽ vào sảnh kệ sách' });
+        // Bắt đầu từ cửa ra vào (entrance)
+        const startX = features?.entrancePos ? features.entrancePos[0] : -40.5;
+        const startZ = features?.entrancePos ? features.entrancePos[2] : 26;
+        path.push({ pos: new THREE.Vector3(startX, 0.05, startZ), msg: 'Bắt đầu từ cửa vào' });
+        path.push({ pos: new THREE.Vector3(startX, 0.05, libraryGapZ), msg: 'Đi thẳng vào sảnh trung tâm' });
+        path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Rẽ vào hành lang kệ sách' });
       }
 
       path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, aisleZ), msg: `Tới lối đi của kệ số ${highlightRack}` });
