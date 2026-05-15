@@ -9,7 +9,8 @@ import {
   deleteShelf,
   deleteBay,
   addShelf,
-  loginAdmin
+  loginAdmin,
+  lookupShelf
 } from './bookService.js';
 
 const app = express();
@@ -95,6 +96,23 @@ app.put('/api/admin/shelves/:id', async (req, res) => {
   const success = await updateShelf(id, { deweyStart, deweyEnd });
   if (success) return res.json({ success: true });
   return res.status(500).json({ error: 'Failed to update shelf' });
+});
+
+// Tra cứu thông tin kệ (kể cả đã xóa) để lấy dữ liệu Dewey cũ
+app.get('/api/admin/shelves/lookup', async (req, res) => {
+  const { campus, rackNumber, bay, face } = req.query;
+  try {
+    const data = await lookupShelf(
+      campus as string, 
+      parseInt(rackNumber as string), 
+      parseInt(bay as string), 
+      parseInt(face as string)
+    );
+    if (data) return res.json(data);
+    return res.status(404).json({ error: 'Shelf not found' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Lookup failed' });
+  }
 });
 
 // Xóa 1 shelf cụ thể

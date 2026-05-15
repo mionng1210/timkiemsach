@@ -66,6 +66,8 @@ async function migrate() {
         dewey_end DECIMAL(10, 3) NOT NULL,
         bay INTEGER NOT NULL,
         face INTEGER NOT NULL,
+        position_x DECIMAL(10, 2),
+        position_z DECIMAL(10, 2),
         is_deleted BOOLEAN DEFAULT FALSE
       );
 
@@ -101,6 +103,7 @@ async function migrate() {
         [campus]
       );
       const campusId = campusRes.rows[0].id;
+      const zOffset = campus === 'Thu Duc' ? 6.5 : 17.0;
 
       // Group by rack for U-Shape logic
       const rawMap = new Map<number, any[]>();
@@ -127,28 +130,51 @@ async function migrate() {
             ? getBayFaceForThuDuc(raw.letter)
             : letterToBayFace(raw.letter, maxLetter);
 
-          // Kiểm tra xem kệ này đã tồn tại chưa (kể cả đã bị xóa mềm)
-          const existing = await client.query(
-            'SELECT id FROM shelves WHERE campus_id = $1 AND code = $2 LIMIT 1',
-            [campusId, raw.code]
+          // Tính tọa độ mặc định
+          const positionX = (bay - 1) * 3.0;
+          const positionZ = (campus === 'Thu Duc')
+            ? (raw.rackNumber - 1 - zOffset) * 4.0
+            : -(raw.rackNumber - 1 - zOffset) * 4.0;
+
+          // Kiểm tra xem kệ này đã tồn tại theo vị trí (rack, bay, face) chưa
+          // Điều này giúp match với các kệ trống đã tạo bởi seedGrid
+          const existingByPos = await client.query(
+            'SELECT id FROM shelves WHERE campus_id = $1 AND rack_number = $2 AND bay = $3 AND face = $4 LIMIT 1',
+            [campusId, raw.rackNumber, bay, face]
           );
 
-          if (existing.rows.length > 0) {
-            // Nếu tồn tại -> Cập nhật thông tin và hồi sinh (is_deleted = false)
+          if (existingByPos.rows.length > 0) {
+            // Nếu tồn tại vị trí -> Cập nhật thông tin Excel vào dòng đó
             await client.query(
               `UPDATE shelves SET 
-                rack_number = $1, letter = $2, code = $3, dewey_start = $4, dewey_end = $5, 
-                bay = $6, face = $7, is_deleted = FALSE 
-               WHERE id = $8`,
-              [raw.rackNumber, raw.letter, raw.code, raw.deweyStart, raw.deweyEnd, bay, face, existing.rows[0].id]
+                letter = $1, code = $2, dewey_start = $3, dewey_end = $4, 
+                position_x = $5, position_z = $6, is_deleted = FALSE 
+               WHERE id = $7`,
+              [raw.letter, raw.code, raw.deweyStart, raw.deweyEnd, positionX, positionZ, existingByPos.rows[0].id]
             );
           } else {
-            // Nếu chưa có -> Insert mới
-            await client.query(
-              `INSERT INTO shelves (campus_id, rack_number, letter, code, dewey_start, dewey_end, bay, face, is_deleted)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE)`,
-              [campusId, raw.rackNumber, raw.letter, raw.code, raw.deweyStart, raw.deweyEnd, bay, face]
+            // Kiểm tra theo mã code cũ (nếu có)
+            const existingByCode = await client.query(
+              'SELECT id FROM shelves WHERE campus_id = $1 AND code = $2 LIMIT 1',
+              [campusId, raw.code]
             );
+
+            if (existingByCode.rows.length > 0) {
+              await client.query(
+                `UPDATE shelves SET 
+                  rack_number = $1, letter = $2, code = $3, dewey_start = $4, dewey_end = $5, 
+                  bay = $6, face = $7, position_x = $8, position_z = $9, is_deleted = FALSE 
+                 WHERE id = $10`,
+                [raw.rackNumber, raw.letter, raw.code, raw.deweyStart, raw.deweyEnd, bay, face, positionX, positionZ, existingByCode.rows[0].id]
+              );
+            } else {
+              // Nếu chưa có bất kỳ cái nào -> Insert mới
+              await client.query(
+                `INSERT INTO shelves (campus_id, rack_number, letter, code, dewey_start, dewey_end, bay, face, position_x, position_z, is_deleted)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE)`,
+                [campusId, raw.rackNumber, raw.letter, raw.code, raw.deweyStart, raw.deweyEnd, bay, face, positionX, positionZ]
+              );
+            }
           }
         }
       }

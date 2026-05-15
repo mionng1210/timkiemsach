@@ -159,6 +159,85 @@ export async function searchByCode(code: string, campusName?: string): Promise<S
 
 // ===== Admin CRUD Operations =====
 
+// Tìm kệ theo vị trí (kể cả đã xóa) để lấy thông tin Dewey cũ
+export async function lookupShelf(campusName: string, rackNumber: number, bay: number, face: number) {
+  try {
+    const res = await pool.query(`
+      SELECT s.id, s.dewey_start as "deweyStart", s.dewey_end as "deweyEnd", s.is_deleted as "isDeleted"
+      FROM shelves s
+      JOIN campuses c ON s.campus_id = c.id
+      WHERE LOWER(c.name) = LOWER($1) AND s.rack_number = $2 AND s.bay = $3 AND s.face = $4
+    `, [campusName, rackNumber, bay, face]);
+
+    if (res.rows.length > 0) return res.rows[0];
+    return null;
+  } catch (err) {
+    console.error('Error looking up shelf:', err);
+    return null;
+  }
+}
+
+async function recalculateUShapeLabels(campusId: number, rackNumber: number): Promise<void> {
+  try {
+    // Get campus name
+    const campusRes = await pool.query('SELECT name FROM campuses WHERE id = $1', [campusId]);
+    if (campusRes.rows.length === 0) return;
+    const campusName = campusRes.rows[0].name;
+
+    // Get all active shelves in this rack
+    const res = await pool.query(`
+      SELECT id, bay, face 
+      FROM shelves 
+      WHERE campus_id = $1 AND rack_number = $2 AND is_deleted = FALSE
+    `, [campusId, rackNumber]);
+
+    const shelves = res.rows;
+    if (shelves.length === 0) return;
+
+    // Determine unique bays and map them to 1..N
+    const uniqueBays = [...new Set(shelves.map(s => s.bay))].sort((a, b) => a - b);
+    const N = uniqueBays.length;
+    const bayToIndex = new Map(uniqueBays.map((b, i) => [b, i + 1]));
+
+    // Bước quan trọng: Tạm thời đổi mã code thành giá trị duy nhất (tạm thời) 
+    // để tránh lỗi Unique Constraint khi cập nhật các mã chữ cái mới (ví dụ: a thành b, b thành a)
+    await pool.query(`
+      UPDATE shelves 
+      SET code = 'T_' || id 
+      WHERE campus_id = $1 AND rack_number = $2 AND is_deleted = FALSE
+    `, [campusId, rackNumber]);
+
+    for (const s of shelves) {
+      const bayIdx = bayToIndex.get(s.bay)!;
+      let charIdx = 0;
+
+      if (campusName === 'Sai Gon') {
+        // Sài Gòn: Bắt đầu từ Mặt trước Bay 1 (face 1)
+        if (s.face === 1) {
+          charIdx = bayIdx;
+        } else {
+          charIdx = 2 * N - bayIdx + 1;
+        }
+      } else {
+        // Thủ Đức: Bắt đầu từ Mặt sau Bay 1 (face 2)
+        if (s.face === 2) {
+          charIdx = bayIdx;
+        } else {
+          charIdx = 2 * N - bayIdx + 1;
+        }
+      }
+
+      if (charIdx > 0) {
+        const letter = String.fromCharCode(96 + charIdx); // 'a', 'b'...
+        const newCode = `${rackNumber}${letter}`;
+        await pool.query('UPDATE shelves SET code = $1, letter = $2 WHERE id = $3', [newCode, letter.toUpperCase(), s.id]);
+      }
+    }
+  } catch (err) {
+    console.error('Error recalculating U-shape labels:', err);
+  }
+}
+
 export async function updateShelf(id: number, data: Partial<ShelfRow>): Promise<boolean> {
   try {
     const fields: string[] = [];
@@ -189,7 +268,15 @@ export async function updateShelf(id: number, data: Partial<ShelfRow>): Promise<
 
 export async function deleteShelf(id: number): Promise<boolean> {
   try {
+    // Lấy thông tin rack để recalculate trước khi xóa
+    const infoRes = await pool.query('SELECT campus_id, rack_number FROM shelves WHERE id = $1', [id]);
+    
     await pool.query('UPDATE shelves SET is_deleted = TRUE WHERE id = $1', [id]);
+
+    if (infoRes.rows.length > 0) {
+      const { campus_id, rack_number } = infoRes.rows[0];
+      await recalculateUShapeLabels(campus_id, rack_number);
+    }
     return true;
   } catch (err) {
     console.error('Error deleting shelf:', err);
@@ -199,11 +286,16 @@ export async function deleteShelf(id: number): Promise<boolean> {
 
 export async function deleteBay(campusName: string, rackNumber: number, bay: number): Promise<boolean> {
   try {
+    const campusRes = await pool.query('SELECT id FROM campuses WHERE LOWER(name) = LOWER($1)', [campusName]);
+    if (campusRes.rows.length === 0) return false;
+    const campusId = campusRes.rows[0].id;
+
     await pool.query(`
       UPDATE shelves SET is_deleted = TRUE
-      WHERE campus_id = (SELECT id FROM campuses WHERE LOWER(name) = LOWER($1))
-      AND rack_number = $2 AND bay = $3
-    `, [campusName, rackNumber, bay]);
+      WHERE campus_id = $1 AND rack_number = $2 AND bay = $3
+    `, [campusId, rackNumber, bay]);
+
+    await recalculateUShapeLabels(campusId, rackNumber);
     return true;
   } catch (err) {
     console.error('Error deleting bay:', err);
@@ -220,29 +312,37 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
     if (campusRes.rows.length === 0) return false;
     const campusId = campusRes.rows[0].id;
 
-    // Kiểm tra xem đã có kệ trùng mã dãy trong campus này chưa (kể cả đã xóa)
+    // Tìm kiếm vị trí kệ đã được "tạo sẵn" (pre-allocated) theo tọa độ/vị trí
     const existingRes = await pool.query(
-      'SELECT id FROM shelves WHERE code = $1 AND campus_id = $2', 
-      [code, campusId]
+      'SELECT id FROM shelves WHERE campus_id = $1 AND rack_number = $2 AND bay = $3 AND face = $4', 
+      [campusId, rackNumber, bay, face]
     );
 
+    // Tạo một mã tạm thời duy nhất (tối đa 10 ký tự) để tránh xung đột Unique Constraint 
+    // trước khi hàm recalculateUShapeLabels tính toán lại mã chuẩn
+    const tempCode = `T_${Math.random().toString(36).substring(2, 9)}`;
+
     if (existingRes.rows.length > 0) {
-      // Nếu đã tồn tại (có thể là đã xóa mềm), thực hiện cập nhật lại và khôi phục
+      // Nếu vị trí này đã có (thường là kệ ẩn do script seedGrid tạo), ta chỉ việc "Bật" nó lên
       const shelfId = existingRes.rows[0].id;
       await pool.query(`
         UPDATE shelves 
-        SET dewey_start = $1, dewey_end = $2, rack_number = $3, letter = $4, 
-            bay = $5, face = $6, position_x = $7, position_z = $8, is_deleted = FALSE
-        WHERE id = $9
-      `, [deweyStart, deweyEnd, rackNumber, letter || 'A', bay, face, positionX, positionZ, shelfId]);
+        SET code = $1, dewey_start = $2, dewey_end = $3, letter = $4, 
+            position_x = $5, position_z = $6, is_deleted = FALSE
+        WHERE id = $7
+      `, [tempCode, deweyStart, deweyEnd, letter || 'A', positionX, positionZ, shelfId]);
     } else {
-      // Nếu chưa có, insert mới hoàn toàn
+      // Dự phòng: Nếu vì lý do nào đó vị trí này chưa có (chưa chạy seed), thì insert mới hoàn toàn
       await pool.query(`
         INSERT INTO shelves (code, dewey_start, dewey_end, campus_id, rack_number, letter, bay, face, position_x, position_z, is_deleted)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE)
-      `, [code, deweyStart, deweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ]);
+      `, [tempCode, deweyStart, deweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ]);
     }
     
+    if (campusId && rackNumber) {
+      await recalculateUShapeLabels(campusId, rackNumber as number);
+    }
+
     return true;
   } catch (err) {
     console.error('Error adding shelf:', err);
