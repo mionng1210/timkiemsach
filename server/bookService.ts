@@ -159,6 +159,59 @@ export async function searchByCode(code: string, campusName?: string): Promise<S
 
 // ===== Admin CRUD Operations =====
 
+async function recalculateUShapeLabels(campusId: number, rackNumber: number): Promise<void> {
+  try {
+    // Get campus name
+    const campusRes = await pool.query('SELECT name FROM campuses WHERE id = $1', [campusId]);
+    if (campusRes.rows.length === 0) return;
+    const campusName = campusRes.rows[0].name;
+
+    // Get all active shelves in this rack
+    const res = await pool.query(`
+      SELECT id, bay, face 
+      FROM shelves 
+      WHERE campus_id = $1 AND rack_number = $2 AND is_deleted = FALSE
+    `, [campusId, rackNumber]);
+
+    const shelves = res.rows;
+    if (shelves.length === 0) return;
+
+    // Determine unique bays and map them to 1..N
+    const uniqueBays = [...new Set(shelves.map(s => s.bay))].sort((a, b) => a - b);
+    const N = uniqueBays.length;
+    const bayToIndex = new Map(uniqueBays.map((b, i) => [b, i + 1]));
+
+    for (const s of shelves) {
+      const bayIdx = bayToIndex.get(s.bay)!;
+      let charIdx = 0;
+
+      if (campusName === 'Sai Gon') {
+        // Sài Gòn: Bắt đầu từ Mặt trước Bay 1 (face 1)
+        if (s.face === 1) {
+          charIdx = bayIdx;
+        } else {
+          charIdx = 2 * N - bayIdx + 1;
+        }
+      } else {
+        // Thủ Đức: Bắt đầu từ Mặt sau Bay 1 (face 2)
+        if (s.face === 2) {
+          charIdx = bayIdx;
+        } else {
+          charIdx = 2 * N - bayIdx + 1;
+        }
+      }
+
+      if (charIdx > 0) {
+        const letter = String.fromCharCode(96 + charIdx); // 'a', 'b'...
+        const newCode = `${rackNumber}${letter}`;
+        await pool.query('UPDATE shelves SET code = $1, letter = $2 WHERE id = $3', [newCode, letter.toUpperCase(), s.id]);
+      }
+    }
+  } catch (err) {
+    console.error('Error recalculating U-shape labels:', err);
+  }
+}
+
 export async function updateShelf(id: number, data: Partial<ShelfRow>): Promise<boolean> {
   try {
     const fields: string[] = [];
@@ -189,7 +242,15 @@ export async function updateShelf(id: number, data: Partial<ShelfRow>): Promise<
 
 export async function deleteShelf(id: number): Promise<boolean> {
   try {
+    // Lấy thông tin rack để recalculate trước khi xóa
+    const infoRes = await pool.query('SELECT campus_id, rack_number FROM shelves WHERE id = $1', [id]);
+    
     await pool.query('UPDATE shelves SET is_deleted = TRUE WHERE id = $1', [id]);
+
+    if (infoRes.rows.length > 0) {
+      const { campus_id, rack_number } = infoRes.rows[0];
+      await recalculateUShapeLabels(campus_id, rack_number);
+    }
     return true;
   } catch (err) {
     console.error('Error deleting shelf:', err);
@@ -199,11 +260,16 @@ export async function deleteShelf(id: number): Promise<boolean> {
 
 export async function deleteBay(campusName: string, rackNumber: number, bay: number): Promise<boolean> {
   try {
+    const campusRes = await pool.query('SELECT id FROM campuses WHERE LOWER(name) = LOWER($1)', [campusName]);
+    if (campusRes.rows.length === 0) return false;
+    const campusId = campusRes.rows[0].id;
+
     await pool.query(`
       UPDATE shelves SET is_deleted = TRUE
-      WHERE campus_id = (SELECT id FROM campuses WHERE LOWER(name) = LOWER($1))
-      AND rack_number = $2 AND bay = $3
-    `, [campusName, rackNumber, bay]);
+      WHERE campus_id = $1 AND rack_number = $2 AND bay = $3
+    `, [campusId, rackNumber, bay]);
+
+    await recalculateUShapeLabels(campusId, rackNumber);
     return true;
   } catch (err) {
     console.error('Error deleting bay:', err);
@@ -243,6 +309,10 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
       `, [code, deweyStart, deweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ]);
     }
     
+    if (campusId && rackNumber) {
+      await recalculateUShapeLabels(campusId, rackNumber as number);
+    }
+
     return true;
   } catch (err) {
     console.error('Error adding shelf:', err);

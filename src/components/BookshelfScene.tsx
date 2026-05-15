@@ -47,6 +47,7 @@ const woodMatHover = new THREE.MeshLambertMaterial({
 // Bay với click zones cho mặt trước và mặt sau
 function Bay({
   bayIndex,
+  totalBays,
   mat,
   rackNumber,
   shelves,
@@ -56,6 +57,7 @@ function Bay({
   overrideOffsetX,
 }: {
   bayIndex: number;
+  totalBays: number;
   mat: THREE.Material;
   rackNumber: number;
   shelves: ShelfInfo[];
@@ -70,18 +72,26 @@ function Bay({
   const face1Shelf = shelves.find(s => s.bay === bayIndex && s.face === 1);
   const face2Shelf = shelves.find(s => s.bay === bayIndex && s.face === 2);
 
-  const getThuDucLabel = (idx: number, face: number) => {
-    if (face === 1) {
-      // Mặt trước: 1(Trái)->A, ..., 6(Phải)->F
-      return String.fromCharCode(64 + idx);
+  const getLabel = (idx: number, face: number) => {
+    if (campus === 'Thu Duc') {
+      // Thủ Đức: Bắt đầu từ mặt sau Bay 1 (face 2)
+      if (face === 2) {
+        return String.fromCharCode(64 + idx);
+      } else {
+        return String.fromCharCode(64 + (2 * totalBays - idx + 1));
+      }
     } else {
-      // Mặt sau (U-shape): 6(Phải mặt trước = Trái mặt sau)->G, ..., 1(Trái mặt trước = Phải mặt sau)->L
-      return String.fromCharCode(64 + (13 - idx));
+      // Sài Gòn: Bắt đầu từ mặt trước Bay 1 (face 1)
+      if (face === 1) {
+        return String.fromCharCode(64 + idx);
+      } else {
+        return String.fromCharCode(64 + (2 * totalBays - idx + 1));
+      }
     }
   };
 
-  const displayCode1 = face1Shelf ? face1Shelf.code.toUpperCase() : (campus === 'Thu Duc' ? getThuDucLabel(bayIndex, 1) : `BAY ${bayIndex}`);
-  const displayCode2 = face2Shelf ? face2Shelf.code.toUpperCase() : (campus === 'Thu Duc' ? getThuDucLabel(bayIndex, 2) : `BAY ${bayIndex}`);
+  const displayCode1 = face1Shelf ? face1Shelf.code.toUpperCase() : `${rackNumber}${getLabel(bayIndex, 1)}`;
+  const displayCode2 = face2Shelf ? face2Shelf.code.toUpperCase() : `${rackNumber}${getLabel(bayIndex, 2)}`;
 
   return (
     <group position={[offsetX, 0, 0]}>
@@ -223,7 +233,7 @@ function Rack({
       onPointerOut={() => { setHovered(false); document.body.style.cursor = 'default'; }}
     >
       {bays.map((b) => (
-        <Bay key={b} bayIndex={b} mat={mat} rackNumber={rackNumber} shelves={shelves} onBayClick={onBayClick} campus={campus} isAdminMode={isAdminMode} />
+        <Bay key={b} bayIndex={b} totalBays={bays.length} mat={mat} rackNumber={rackNumber} shelves={shelves} onBayClick={onBayClick} campus={campus} isAdminMode={isAdminMode} />
       ))}
 
       {/* Nhãn số kệ ở đầu dãy (Trái) */}
@@ -899,6 +909,7 @@ export default function BookshelfScene({
               <group position={[-1.65, 0, 0.49]}>
                 <Bay
                   bayIndex={cbay.bay}
+                  totalBays={racks.find(r => r.rackNumber === cbay.rackNumber)?.bays.length || 1}
                   mat={highlightRack === cbay.rackNumber && highlightBay === cbay.bay ? woodMatHL : woodMat}
                   rackNumber={cbay.rackNumber}
                   shelves={cbay.shelves}

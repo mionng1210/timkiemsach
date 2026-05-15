@@ -30,6 +30,16 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
 
   // Position of a new shelf being added
   const [addingShelfPos, setAddingShelfPos] = useState<{ x: number, z: number, rackNumber?: number, bay?: number, face?: number } | null>(null);
+  const [formRackNumber, setFormRackNumber] = useState<number>(10);
+  const [formBay, setFormBay] = useState<number>(1);
+
+  // Update form states when addingShelfPos changes
+  useEffect(() => {
+    if (addingShelfPos) {
+      setFormRackNumber(addingShelfPos.rackNumber ?? 10);
+      setFormBay(addingShelfPos.bay ?? 1);
+    }
+  }, [addingShelfPos]);
 
   // Draggable Admin Panel state
   const [adminPanelPos, setAdminPanelPos] = useState({ x: 0, y: 0 });
@@ -201,16 +211,13 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const handleAddShelf = async () => {
     if (!addingShelfPos) return;
 
-    const rackNumber = parseInt((document.getElementById('addRackNumber') as HTMLInputElement).value);
-    const bay = parseInt((document.getElementById('addBay') as HTMLInputElement).value);
+    const rackNumber = formRackNumber;
+    const bay = formBay;
 
-    // Dữ liệu Mặt trước (Face 1)
-    const code1 = (document.getElementById('addCode1') as HTMLInputElement).value;
     const deweyStart1 = parseFloat((document.getElementById('addDeweyStart1') as HTMLInputElement).value);
     const deweyEnd1 = parseFloat((document.getElementById('addDeweyEnd1') as HTMLInputElement).value);
 
     // Dữ liệu Mặt sau (Face 2)
-    const code2 = (document.getElementById('addCode2') as HTMLInputElement).value;
     const deweyStart2 = parseFloat((document.getElementById('addDeweyStart2') as HTMLInputElement).value);
     const deweyEnd2 = parseFloat((document.getElementById('addDeweyEnd2') as HTMLInputElement).value);
 
@@ -227,61 +234,10 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       return;
     }
 
-    // 2. Kiểm tra Dewey Start < Dewey End cho cả 2 mặt
-    if (code1 && deweyStart1 >= deweyEnd1) {
-      alert(`Lỗi mặt trước: Dewey Start (${deweyStart1}) phải nhỏ hơn Dewey End (${deweyEnd1})`);
+    // 2. Kiểm tra Dewey Start < Dewey End
+    if (deweyStart1 >= deweyEnd1 || deweyStart2 >= deweyEnd2) {
+      alert('Lỗi: Dewey Start phải nhỏ hơn Dewey End!');
       return;
-    }
-    if (code2 && deweyStart2 >= deweyEnd2) {
-      alert(`Lỗi mặt sau: Dewey Start (${deweyStart2}) phải nhỏ hơn Dewey End (${deweyEnd2})`);
-      return;
-    }
-
-    // 3. Ràng buộc về thứ tự Bay và vị trí vật lý
-    const existingRack = racks.find(r => r.rackNumber === rackNumber);
-    if (existingRack) {
-      // Kiểm tra trùng Bay
-      if (existingRack.bays.includes(bay)) {
-        alert(`Kệ ${rackNumber} đã có Bay ${bay}. Vui lòng chọn số Bay khác.`);
-        return;
-      }
-
-      // Kiểm tra căn lề Z-axis (Tất cả các khoang cùng kệ phải cùng toạ độ Z)
-      const firstShelf = existingRack.shelves.find(s => s.positionZ != null);
-      if (firstShelf && Math.abs(addingShelfPos.z - firstShelf.positionZ!) > 0.1) {
-        alert(`Lỗi căn lề: Kệ số ${rackNumber} đang nằm ở trục Z = ${firstShelf.positionZ!.toFixed(2)}. Bạn không thể đặt khoang mới ở trục Z = ${addingShelfPos.z.toFixed(2)}.`);
-        return;
-      }
-
-      for (const s of existingRack.shelves) {
-        if (s.positionX == null) continue;
-
-        // Nếu bay mới lớn hơn bay cũ nhưng x mới lại nhỏ hơn x cũ -> Vô lý
-        if (bay > s.bay && addingShelfPos.x < s.positionX - 0.1) {
-          alert(`Lỗi logic: Bay ${bay} không thể nằm phía trước Bay ${s.bay}.`);
-          return;
-        }
-
-        // Nếu bay mới nhỏ hơn bay cũ nhưng x mới lại lớn hơn x cũ -> Vô lý
-        if (bay < s.bay && addingShelfPos.x > s.positionX + 0.1) {
-          alert(`Lỗi logic: Bay ${bay} không thể nằm phía sau Bay ${s.bay}.`);
-          return;
-        }
-
-      }
-    }
-
-    // 5. Kiểm tra tính duy nhất của Mã dãy kệ (Code) trong toàn Campus
-    const allShelves = racks.flatMap(r => r.shelves);
-    const duplicateCode = (c: string) => allShelves.find(s => s.code.toLowerCase() === c.toLowerCase() && (s.rackNumber !== rackNumber || s.bay !== bay));
-    
-    if (code1 && duplicateCode(code1)) {
-      const dup = duplicateCode(code1)!;
-      if (!confirm(`Cảnh báo: Mã dãy "${code1}" đã được sử dụng tại Kệ ${dup.rackNumber}, Bay ${dup.bay}. Bạn có chắc chắn muốn tiếp tục?`)) return;
-    }
-    if (code2 && duplicateCode(code2)) {
-      const dup = duplicateCode(code2)!;
-      if (!confirm(`Cảnh báo: Mã dãy "${code2}" đã được sử dụng tại Kệ ${dup.rackNumber}, Bay ${dup.bay}. Bạn có chắc chắn muốn tiếp tục?`)) return;
     }
 
     let successCount = 0;
@@ -309,12 +265,12 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     const face1Val = 1;
     const face2Val = 2;
 
-    // Tạo các mặt có thông tin
-    await addFace(code1, face1Val, deweyStart1, deweyEnd1);
-    await addFace(code2, face2Val, deweyStart2, deweyEnd2);
+    // Tạo các mặt có thông tin theo U-shape
+    await addFace(suggestedCodes.code1, face1Val, deweyStart1, deweyEnd1);
+    await addFace(suggestedCodes.code2, face2Val, deweyStart2, deweyEnd2);
 
     if (attemptCount === 0) {
-      alert('Vui lòng nhập Mã dãy cho ít nhất một mặt kệ!');
+      alert('Vui lòng nhập ít nhất một mặt kệ!');
       return;
     }
 
@@ -470,6 +426,30 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       }
     }
   }, [editingShelf, addingShelfPos]);
+
+  const suggestedCodes = useMemo(() => {
+    if (!addingShelfPos) return { code1: '', code2: '' };
+    const rNum = formRackNumber;
+    const bIdx = formBay;
+
+    const rack = racks.find(r => r.rackNumber === rNum);
+    const existingBays = rack ? rack.bays : [];
+    const allBays = [...new Set([...existingBays, bIdx])].sort((a, b) => a - b);
+    const N = allBays.length;
+    const currentPos = allBays.indexOf(bIdx) + 1;
+
+    if (campus === 'Thu Duc') {
+      // Thủ Đức: Bắt đầu từ mặt sau Bay 1 (c2)
+      const c2 = String.fromCharCode(96 + currentPos);
+      const c1 = String.fromCharCode(96 + (2 * N - currentPos + 1));
+      return { code1: `${rNum}${c1}`, code2: `${rNum}${c2}` };
+    } else {
+      // Sài Gòn: Bắt đầu từ mặt trước Bay 1 (c1)
+      const c1 = String.fromCharCode(96 + currentPos);
+      const c2 = String.fromCharCode(96 + (2 * N - currentPos + 1));
+      return { code1: `${rNum}${c1}`, code2: `${rNum}${c2}` };
+    }
+  }, [addingShelfPos, racks, campus]);
 
   return (
     <div className="viewer-panel">
@@ -755,14 +735,20 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
 
           <div className="admin-form-group">
             <label>Số Rack (VD: 10):</label>
-            <input type="number" id="addRackNumber" defaultValue={addingShelfPos.rackNumber ?? 10} />
+            <input 
+              type="number" 
+              id="addRackNumber" 
+              value={formRackNumber} 
+              onChange={(e) => setFormRackNumber(parseInt(e.target.value) || 0)}
+            />
           </div>
           <div className="admin-form-group">
             <label>Khoang (Bay):</label>
             <input
               type="number"
               id="addBay"
-              defaultValue={addingShelfPos.bay ?? 1}
+              value={formBay}
+              onChange={(e) => setFormBay(parseInt(e.target.value) || 0)}
               disabled={true}
               style={{
                 backgroundColor: 'rgba(0, 0, 0, 0.3)',
@@ -777,8 +763,11 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
 
           <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt trước (1)</div>
           <div className="admin-form-group">
-            <label>Mã dãy:</label>
-            <input type="text" id="addCode1" defaultValue={`${addingShelfPos.rackNumber ?? 10}a`} placeholder="Bỏ trống nếu không tạo" />
+            <label>Mã dãy (tự động):</label>
+            <div style={{ padding: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', color: '#6366f1', fontWeight: 'bold' }}>
+              {suggestedCodes.code1.toUpperCase()}
+              <input type="hidden" id="addCode1" value={suggestedCodes.code1} />
+            </div>
           </div>
           <div className="admin-form-group">
             <label>Dewey Start:</label>
@@ -791,8 +780,11 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
 
           <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt sau (2)</div>
           <div className="admin-form-group">
-            <label>Mã dãy:</label>
-            <input type="text" id="addCode2" defaultValue={`${addingShelfPos.rackNumber ?? 10}b`} placeholder="Bỏ trống nếu không tạo" />
+            <label>Mã dãy (tự động):</label>
+            <div style={{ padding: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', color: '#6366f1', fontWeight: 'bold' }}>
+              {suggestedCodes.code2.toUpperCase()}
+              <input type="hidden" id="addCode2" value={suggestedCodes.code2} />
+            </div>
           </div>
           <div className="admin-form-group">
             <label>Dewey Start:</label>
