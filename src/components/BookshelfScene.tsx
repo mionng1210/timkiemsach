@@ -419,7 +419,7 @@ function AdminGrid({ onAddRackAt, visible, racks, campus }: { onAddRackAt?: (x: 
     // We use the same Z formula as the sequential racks to stay aligned with the library floor
     // Thu Duc has 13 sequential racks (1-13), center is 6.5
     // Sai Gon has 12 sequential racks (2-13), center is 6.0
-    const zOffset = campus === 'Thu Duc' ? 6.5 : 17.5;
+    const zOffset = campus === 'Thu Duc' ? 6.5 : 16.5;
 
     for (let col = 0; col < numBays; col++) {
       for (let row = 0; row < numRows; row++) {
