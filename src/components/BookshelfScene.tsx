@@ -411,7 +411,7 @@ function AdminGrid({ onAddRackAt, visible, racks, campus }: { onAddRackAt?: (x: 
 
   const instances = useMemo(() => {
     const data = [];
-    
+
     // Grid settings: 10 bays (x: 0 to 27), 50 rows (z)
     const numBays = 10;
     const numRows = 50;
@@ -419,17 +419,17 @@ function AdminGrid({ onAddRackAt, visible, racks, campus }: { onAddRackAt?: (x: 
     // We use the same Z formula as the sequential racks to stay aligned with the library floor
     // Thu Duc has 13 sequential racks (1-13), center is 6.5
     // Sai Gon has 12 sequential racks (2-13), center is 6.0
-    const zOffset = campus === 'Thu Duc' ? 6.5 : 17.0; 
+    const zOffset = campus === 'Thu Duc' ? 6.5 : 17.5;
 
     for (let col = 0; col < numBays; col++) {
       for (let row = 0; row < numRows; row++) {
         const cx = col * 3.0;
         // Thủ Đức: Z tăng dần (theo hướng vào sâu thư viện)
         // Sài Gòn: Z giảm dần
-        const cz = campus === 'Thu Duc' 
-          ? (row - zOffset) * 4.0 
+        const cz = campus === 'Thu Duc'
+          ? (row - zOffset) * 4.0
           : -(row - zOffset) * 4.0;
-        
+
         data.push({ cx, cz, col, row });
       }
     }

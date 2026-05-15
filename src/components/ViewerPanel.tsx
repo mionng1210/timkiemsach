@@ -182,6 +182,35 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [adminSubMode, setAdminSubMode] = useState<'menu' | 'add' | 'manage' | 'hidden' | null>(null);
   const [editingShelf, setEditingShelf] = useState<ShelfInfo | null>(null);
+  const [prefilledDewey, setPrefilledDewey] = useState<{
+    s1: string, e1: string, s2: string, e2: string
+  }>({ s1: '0.000', e1: '999.999', s2: '0.000', e2: '999.999' });
+
+  // Tự động tìm kiếm dữ liệu cũ khi click vào một ô trống để "Thêm kệ"
+  useEffect(() => {
+    if (addingShelfPos) {
+      const fetchOldData = async () => {
+        try {
+          // Tra cứu mặt trước (1)
+          const r1 = await fetch(`/api/admin/shelves/lookup?campus=${encodeURIComponent(campus)}&rackNumber=${addingShelfPos.rackNumber}&bay=${addingShelfPos.bay}&face=1`);
+          const d1 = await r1.json();
+          // Tra cứu mặt sau (2)
+          const r2 = await fetch(`/api/admin/shelves/lookup?campus=${encodeURIComponent(campus)}&rackNumber=${addingShelfPos.rackNumber}&bay=${addingShelfPos.bay}&face=2`);
+          const d2 = await r2.json();
+
+          setPrefilledDewey({
+            s1: (d1 && !d1.error) ? d1.deweyStart.toFixed(3) : '0.000',
+            e1: (d1 && !d1.error) ? d1.deweyEnd.toFixed(3) : '999.999',
+            s2: (d2 && !d2.error) ? d2.deweyStart.toFixed(3) : '0.000',
+            e2: (d2 && !d2.error) ? d2.deweyEnd.toFixed(3) : '999.999'
+          });
+        } catch (e) {
+          console.error('Lỗi khi tra cứu dữ liệu kệ cũ:', e);
+        }
+      };
+      fetchOldData();
+    }
+  }, [addingShelfPos, campus]);
 
   useEffect(() => {
     const isMenuOpen = isAdminMode && adminSubMode !== 'hidden' && adminSubMode !== null;
@@ -771,11 +800,11 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           </div>
           <div className="admin-form-group">
             <label>Dewey Start:</label>
-            <input type="text" id="addDeweyStart1" defaultValue="0.000" />
+            <input type="text" id="addDeweyStart1" key={`s1-${prefilledDewey.s1}`} defaultValue={prefilledDewey.s1} />
           </div>
           <div className="admin-form-group">
             <label>Dewey End:</label>
-            <input type="text" id="addDeweyEnd1" defaultValue="999.999" />
+            <input type="text" id="addDeweyEnd1" key={`e1-${prefilledDewey.e1}`} defaultValue={prefilledDewey.e1} />
           </div>
 
           <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt sau (2)</div>
@@ -788,11 +817,11 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           </div>
           <div className="admin-form-group">
             <label>Dewey Start:</label>
-            <input type="text" id="addDeweyStart2" defaultValue="0.000" />
+            <input type="text" id="addDeweyStart2" key={`s2-${prefilledDewey.s2}`} defaultValue={prefilledDewey.s2} />
           </div>
           <div className="admin-form-group">
             <label>Dewey End:</label>
-            <input type="text" id="addDeweyEnd2" defaultValue="999.999" />
+            <input type="text" id="addDeweyEnd2" key={`e2-${prefilledDewey.e2}`} defaultValue={prefilledDewey.e2} />
           </div>
 
           <div className="admin-actions">
