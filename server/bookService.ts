@@ -177,16 +177,60 @@ export async function lookupShelf(campusName: string, rackNumber: number, bay: n
   }
 }
 
-async function recalculateUShapeLabels(campusId: number, rackNumber: number): Promise<void> {
+function getPristineLetter(campusName: string, bay: number, face: number): string {
+  const isThuDuc = campusName.toLowerCase().includes('thu duc');
+  if (isThuDuc) {
+    if (face === 2) {
+      return String.fromCharCode(96 + bay).toLowerCase(); // a-f
+    } else {
+      return String.fromCharCode(96 + 6 + bay).toLowerCase(); // g-l
+    }
+  } else {
+    // Sai Gon
+    if (face === 1) {
+      return String.fromCharCode(96 + bay).toLowerCase(); // a-f
+    } else {
+      return String.fromCharCode(96 + 12 - bay + 1).toLowerCase(); // g-l
+    }
+  }
+}
+
+export async function recalculateUShapeLabels(campusId: number, rackNumber: number): Promise<void> {
   try {
     // Get campus name
     const campusRes = await pool.query('SELECT name FROM campuses WHERE id = $1', [campusId]);
     if (campusRes.rows.length === 0) return;
     const campusName = campusRes.rows[0].name;
 
+    // 1. Reset original_letter = NULL for dummy/seeded shelves that were never imported
+    await pool.query(`
+      UPDATE shelves 
+      SET original_letter = NULL, original_code = NULL 
+      WHERE campus_id = $1 AND rack_number = $2 AND code = '' AND (original_dewey_start = 0 OR original_dewey_start IS NULL)
+    `, [campusId, rackNumber]);
+
+    // 2. Self-healing database check: Ensure all active shelves have original_letter populated
+    const nullLetterShelves = await pool.query(`
+      SELECT id, bay, face, dewey_start, dewey_end 
+      FROM shelves 
+      WHERE campus_id = $1 AND rack_number = $2 AND original_letter IS NULL AND is_deleted = FALSE
+    `, [campusId, rackNumber]);
+
+    for (const r of nullLetterShelves.rows) {
+      const pristineLetter = getPristineLetter(campusName, r.bay, r.face);
+      await pool.query(`
+        UPDATE shelves 
+        SET original_letter = $1::char(1), 
+            original_code = rack_number::text || $1::text,
+            original_dewey_start = COALESCE(original_dewey_start, dewey_start, 0),
+            original_dewey_end = COALESCE(original_dewey_end, dewey_end, 0)
+        WHERE id = $2
+      `, [pristineLetter, r.id]);
+    }
+
     // Get all active shelves in this rack
     const res = await pool.query(`
-      SELECT id, bay, face 
+      SELECT id, bay, face, original_letter
       FROM shelves 
       WHERE campus_id = $1 AND rack_number = $2 AND is_deleted = FALSE
     `, [campusId, rackNumber]);
@@ -194,10 +238,54 @@ async function recalculateUShapeLabels(campusId: number, rackNumber: number): Pr
     const shelves = res.rows;
     if (shelves.length === 0) return;
 
+    // Load ALL original ranges for this rack (both active and deleted)
+    const origRes = await pool.query(`
+      SELECT original_letter as "letter", 
+             original_dewey_start as "deweyStart", 
+             original_dewey_end as "deweyEnd",
+             face
+      FROM shelves
+      WHERE campus_id = $1 AND rack_number = $2 AND original_letter IS NOT NULL
+    `, [campusId, rackNumber]);
+
+    const origRangesByFace = {
+      1: origRes.rows.filter(r => r.face === 1 && r.letter)
+        .map(r => ({ letter: r.letter.toUpperCase().trim(), deweyStart: Number(r.deweyStart), deweyEnd: Number(r.deweyEnd) }))
+        .sort((a, b) => a.letter.localeCompare(b.letter)),
+      2: origRes.rows.filter(r => r.face === 2 && r.letter)
+        .map(r => ({ letter: r.letter.toUpperCase().trim(), deweyStart: Number(r.deweyStart), deweyEnd: Number(r.deweyEnd) }))
+        .sort((a, b) => a.letter.localeCompare(b.letter)),
+    };
+
     // Determine unique bays and map them to 1..N
     const uniqueBays = [...new Set(shelves.map(s => s.bay))].sort((a, b) => a - b);
     const N = uniqueBays.length;
     const bayToIndex = new Map(uniqueBays.map((b, i) => [b, i + 1]));
+
+    // Calculate charIdx for each shelf and sort the shelves by charIdx
+    const shelvesWithCharIdx = shelves.map(s => {
+      const bayIdx = bayToIndex.get(s.bay)!;
+      let charIdx = 0;
+
+      if (campusName === 'Sai Gon') {
+        // Sài Gòn: Bắt đầu từ Mặt trước Bay 1 (face 1) - Dạng U-shape
+        if (s.face === 1) {
+          charIdx = bayIdx;
+        } else {
+          charIdx = 2 * N - bayIdx + 1;
+        }
+      } else {
+        // Thủ Đức: Dạng Z-shape (song song)
+        // Mặt sau (face 2) bắt đầu từ Bay 1 -> Bay N: index 1 -> N
+        // Mặt trước (face 1) bắt đầu từ Bay 1 -> Bay N: index N + 1 -> 2 * N
+        if (s.face === 2) {
+          charIdx = bayIdx;
+        } else {
+          charIdx = N + bayIdx;
+        }
+      }
+      return { ...s, charIdx };
+    }).sort((a, b) => a.charIdx - b.charIdx);
 
     // Bước quan trọng: Tạm thời đổi mã code thành giá trị duy nhất (tạm thời) 
     // để tránh lỗi Unique Constraint khi cập nhật các mã chữ cái mới (ví dụ: a thành b, b thành a)
@@ -207,30 +295,26 @@ async function recalculateUShapeLabels(campusId: number, rackNumber: number): Pr
       WHERE campus_id = $1 AND rack_number = $2 AND is_deleted = FALSE
     `, [campusId, rackNumber]);
 
-    for (const s of shelves) {
-      const bayIdx = bayToIndex.get(s.bay)!;
-      let charIdx = 0;
+    for (let idx = 0; idx < shelvesWithCharIdx.length; idx++) {
+      const s = shelvesWithCharIdx[idx];
+      if (s.charIdx > 0) {
+        const letter = String.fromCharCode(96 + s.charIdx).toUpperCase(); // 'A', 'B'...
+        const newCode = `${rackNumber}${letter.toLowerCase()}`;
+        
+        // Map face-by-face using index of active shelves on this face
+        const activeShelvesOnFace = shelvesWithCharIdx
+          .filter(x => x.face === s.face)
+          .sort((a, b) => a.bay - b.bay);
 
-      if (campusName === 'Sai Gon') {
-        // Sài Gòn: Bắt đầu từ Mặt trước Bay 1 (face 1)
-        if (s.face === 1) {
-          charIdx = bayIdx;
-        } else {
-          charIdx = 2 * N - bayIdx + 1;
-        }
-      } else {
-        // Thủ Đức: Bắt đầu từ Mặt sau Bay 1 (face 2)
-        if (s.face === 2) {
-          charIdx = bayIdx;
-        } else {
-          charIdx = 2 * N - bayIdx + 1;
-        }
-      }
+        const idxOnFace = activeShelvesOnFace.findIndex(x => x.id === s.id);
+        const faceRanges = origRangesByFace[s.face as 1 | 2] || [];
+        const dewey = faceRanges[idxOnFace] || { deweyStart: 0, deweyEnd: 0 };
 
-      if (charIdx > 0) {
-        const letter = String.fromCharCode(96 + charIdx); // 'a', 'b'...
-        const newCode = `${rackNumber}${letter}`;
-        await pool.query('UPDATE shelves SET code = $1, letter = $2 WHERE id = $3', [newCode, letter.toUpperCase(), s.id]);
+        await pool.query(`
+          UPDATE shelves 
+          SET code = $1, letter = $2, dewey_start = $3, dewey_end = $4 
+          WHERE id = $5
+        `, [newCode, letter, dewey.deweyStart, dewey.deweyEnd, s.id]);
       }
     }
   } catch (err) {
@@ -240,6 +324,40 @@ async function recalculateUShapeLabels(campusId: number, rackNumber: number): Pr
 
 export async function updateShelf(id: number, data: Partial<ShelfRow>): Promise<boolean> {
   try {
+    // Lấy thông tin về campus, rack và letter hiện tại của kệ đang active
+    const infoRes = await pool.query(
+      'SELECT campus_id as "campusId", rack_number as "rackNumber", letter FROM shelves WHERE id = $1',
+      [id]
+    );
+    if (infoRes.rows.length === 0) return false;
+    const { campusId, rackNumber, letter } = infoRes.rows[0];
+
+    // Cập nhật dải Dewey gốc dựa trên original_letter
+    if (letter) {
+      const origFields: string[] = [];
+      const origValues: any[] = [];
+      let i = 1;
+      if (data.deweyStart !== undefined) {
+        origFields.push(`dewey_start = $${i}, original_dewey_start = $${i}`);
+        i++;
+        origValues.push(data.deweyStart);
+      }
+      if (data.deweyEnd !== undefined) {
+        origFields.push(`dewey_end = $${i}, original_dewey_end = $${i}`);
+        i++;
+        origValues.push(data.deweyEnd);
+      }
+      if (origFields.length > 0) {
+        origValues.push(campusId, rackNumber, letter.toUpperCase());
+        await pool.query(`
+          UPDATE shelves 
+          SET ${origFields.join(', ')} 
+          WHERE campus_id = $${i++} AND rack_number = $${i++} AND UPPER(original_letter) = $${i}
+        `, origValues);
+      }
+    }
+
+    // Cập nhật dải Dewey trên kệ active hiện tại
     const fields: string[] = [];
     const values: any[] = [];
     let i = 1;
@@ -306,9 +424,10 @@ export async function deleteBay(campusName: string, rackNumber: number, bay: num
 export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
   try {
     const { code, deweyStart, deweyEnd, campus, rackNumber, letter, bay, face, positionX, positionZ } = data;
+    const campusNameStr = campus || '';
     
     // Lấy campus_id từ name
-    const campusRes = await pool.query('SELECT id FROM campuses WHERE LOWER(name) = LOWER($1)', [campus]);
+    const campusRes = await pool.query('SELECT id FROM campuses WHERE LOWER(name) = LOWER($1)', [campusNameStr]);
     if (campusRes.rows.length === 0) return false;
     const campusId = campusRes.rows[0].id;
 
@@ -325,18 +444,22 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
     if (existingRes.rows.length > 0) {
       // Nếu vị trí này đã có (thường là kệ ẩn do script seedGrid tạo), ta chỉ việc "Bật" nó lên
       const shelfId = existingRes.rows[0].id;
+      const pristineLetter = getPristineLetter(campusNameStr, bay as number, face as number);
       await pool.query(`
         UPDATE shelves 
         SET code = $1, dewey_start = $2, dewey_end = $3, letter = $4, 
-            position_x = $5, position_z = $6, is_deleted = FALSE
-        WHERE id = $7
-      `, [tempCode, deweyStart, deweyEnd, letter || 'A', positionX, positionZ, shelfId]);
+            position_x = $5, position_z = $6, is_deleted = FALSE,
+            original_letter = $7, original_code = $8,
+            original_dewey_start = $2, original_dewey_end = $3
+        WHERE id = $9
+      `, [tempCode, deweyStart, deweyEnd, letter || 'A', positionX, positionZ, pristineLetter, `${rackNumber}${pristineLetter}`, shelfId]);
     } else {
       // Dự phòng: Nếu vì lý do nào đó vị trí này chưa có (chưa chạy seed), thì insert mới hoàn toàn
+      const pristineLetter = getPristineLetter(campusNameStr, bay as number, face as number);
       await pool.query(`
-        INSERT INTO shelves (code, dewey_start, dewey_end, campus_id, rack_number, letter, bay, face, position_x, position_z, is_deleted)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE)
-      `, [tempCode, deweyStart, deweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ]);
+        INSERT INTO shelves (code, dewey_start, dewey_end, campus_id, rack_number, letter, bay, face, position_x, position_z, is_deleted, original_letter, original_code, original_dewey_start, original_dewey_end)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE, $11, $12, $2, $3)
+      `, [tempCode, deweyStart, deweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ, pristineLetter, `${rackNumber}${pristineLetter}`]);
     }
     
     if (campusId && rackNumber) {

@@ -47,6 +47,7 @@ const woodMatHover = new THREE.MeshLambertMaterial({
 // Bay với click zones cho mặt trước và mặt sau
 function Bay({
   bayIndex,
+  bayIdx,
   totalBays,
   mat,
   rackNumber,
@@ -57,6 +58,7 @@ function Bay({
   overrideOffsetX,
 }: {
   bayIndex: number;
+  bayIdx?: number;
   totalBays: number;
   mat: THREE.Material;
   rackNumber: number;
@@ -72,16 +74,18 @@ function Bay({
   const face1Shelf = shelves.find(s => s.bay === bayIndex && s.face === 1);
   const face2Shelf = shelves.find(s => s.bay === bayIndex && s.face === 2);
 
+  const activeIdx = bayIdx !== undefined ? bayIdx : bayIndex;
+
   const getLabel = (idx: number, face: number) => {
     if (campus === 'Thu Duc') {
-      // Thủ Đức: Bắt đầu từ mặt sau Bay 1 (face 2)
+      // Thủ Đức: Dạng Z-shape song song
       if (face === 2) {
         return String.fromCharCode(64 + idx);
       } else {
-        return String.fromCharCode(64 + (2 * totalBays - idx + 1));
+        return String.fromCharCode(64 + totalBays + idx);
       }
     } else {
-      // Sài Gòn: Bắt đầu từ mặt trước Bay 1 (face 1)
+      // Sài Gòn: Bắt đầu từ mặt trước Bay 1 (face 1) - Dạng U-shape
       if (face === 1) {
         return String.fromCharCode(64 + idx);
       } else {
@@ -90,8 +94,8 @@ function Bay({
     }
   };
 
-  const displayCode1 = face1Shelf ? face1Shelf.code.toUpperCase() : `${rackNumber}${getLabel(bayIndex, 1)}`;
-  const displayCode2 = face2Shelf ? face2Shelf.code.toUpperCase() : `${rackNumber}${getLabel(bayIndex, 2)}`;
+  const displayCode1 = face1Shelf ? face1Shelf.code.toUpperCase() : `${rackNumber}${getLabel(activeIdx, 1)}`;
+  const displayCode2 = face2Shelf ? face2Shelf.code.toUpperCase() : `${rackNumber}${getLabel(activeIdx, 2)}`;
 
   return (
     <group position={[offsetX, 0, 0]}>
@@ -111,34 +115,38 @@ function Bay({
       <mesh geometry={dividerGeo} material={mat} position={[1.67, 4.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
 
       {/* Biển báo tên dãy mặt trước (Face 1) */}
-      <group position={[1.67, 5.0, 0.015]}>
-        <mesh position={[0, 0, 0]}>
-          <planeGeometry args={[0.9, 0.5]} />
-          <meshBasicMaterial color="#4f46e5" />
-        </mesh>
-        <mesh position={[0, 0, 0.005]}>
-          <planeGeometry args={[0.84, 0.44]} />
-          <meshBasicMaterial color="#ffffff" />
-        </mesh>
-        <Text position={[0, 0, 0.015]} fontSize={0.2} color="#1e1b4b" fontWeight="700" anchorX="center" anchorY="middle" letterSpacing={0.05}>
-          {displayCode1}
-        </Text>
-      </group>
+      {face1Shelf && (
+        <group position={[1.67, 5.0, 0.015]}>
+          <mesh position={[0, 0, 0]}>
+            <planeGeometry args={[0.9, 0.5]} />
+            <meshBasicMaterial color="#4f46e5" />
+          </mesh>
+          <mesh position={[0, 0, 0.005]}>
+            <planeGeometry args={[0.84, 0.44]} />
+            <meshBasicMaterial color="#ffffff" />
+          </mesh>
+          <Text position={[0, 0, 0.015]} fontSize={0.2} color="#1e1b4b" fontWeight="700" anchorX="center" anchorY="middle" letterSpacing={0.05}>
+            {displayCode1}
+          </Text>
+        </group>
+      )}
 
       {/* Biển báo tên dãy mặt sau (Face 2) */}
-      <group position={[1.67, 5.0, -0.995]} rotation={[0, Math.PI, 0]}>
-        <mesh position={[0, 0, 0]}>
-          <planeGeometry args={[0.9, 0.5]} />
-          <meshBasicMaterial color="#4f46e5" />
-        </mesh>
-        <mesh position={[0, 0, 0.005]}>
-          <planeGeometry args={[0.84, 0.44]} />
-          <meshBasicMaterial color="#ffffff" />
-        </mesh>
-        <Text position={[0, 0, 0.015]} fontSize={0.2} color="#1e1b4b" fontWeight="700" anchorX="center" anchorY="middle" letterSpacing={0.05}>
-          {displayCode2}
-        </Text>
-      </group>
+      {face2Shelf && (
+        <group position={[1.67, 5.0, -0.995]} rotation={[0, Math.PI, 0]}>
+          <mesh position={[0, 0, 0]}>
+            <planeGeometry args={[0.9, 0.5]} />
+            <meshBasicMaterial color="#4f46e5" />
+          </mesh>
+          <mesh position={[0, 0, 0.005]}>
+            <planeGeometry args={[0.84, 0.44]} />
+            <meshBasicMaterial color="#ffffff" />
+          </mesh>
+          <Text position={[0, 0, 0.015]} fontSize={0.2} color="#1e1b4b" fontWeight="700" anchorX="center" anchorY="middle" letterSpacing={0.05}>
+            {displayCode2}
+          </Text>
+        </group>
+      )}
 
       {/* Tem dán Dewey mặt trước (Face 1: hướng +Z) */}
       {face1Shelf && (
@@ -175,23 +183,27 @@ function Bay({
       )}
 
       {/* Click zone mặt trước (face=1) */}
-      <mesh
-        geometry={clickGeo}
-        material={clickMat}
-        position={[1.65, 2.5, -0.1]}
-        onClick={(e) => { e.stopPropagation(); onBayClick?.(rackNumber, bayIndex, 1); }}
-        onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
-        onPointerOut={() => { document.body.style.cursor = 'default'; }}
-      />
+      {(face1Shelf || isAdminMode) && (
+        <mesh
+          geometry={clickGeo}
+          material={clickMat}
+          position={[1.65, 2.5, -0.1]}
+          onClick={(e) => { e.stopPropagation(); onBayClick?.(rackNumber, bayIndex, 1); }}
+          onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
+          onPointerOut={() => { document.body.style.cursor = 'default'; }}
+        />
+      )}
       {/* Click zone mặt sau (face=2) */}
-      <mesh
-        geometry={clickGeo}
-        material={clickMat}
-        position={[1.65, 2.5, -0.88]}
-        onClick={(e) => { e.stopPropagation(); onBayClick?.(rackNumber, bayIndex, 2); }}
-        onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
-        onPointerOut={() => { document.body.style.cursor = 'default'; }}
-      />
+      {(face2Shelf || isAdminMode) && (
+        <mesh
+          geometry={clickGeo}
+          material={clickMat}
+          position={[1.65, 2.5, -0.88]}
+          onClick={(e) => { e.stopPropagation(); onBayClick?.(rackNumber, bayIndex, 2); }}
+          onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
+          onPointerOut={() => { document.body.style.cursor = 'default'; }}
+        />
+      )}
     </group>
   );
 }
@@ -232,8 +244,8 @@ function Rack({
       onPointerOver={() => setHovered(true)}
       onPointerOut={() => { setHovered(false); document.body.style.cursor = 'default'; }}
     >
-      {bays.map((b) => (
-        <Bay key={b} bayIndex={b} totalBays={bays.length} mat={mat} rackNumber={rackNumber} shelves={shelves} onBayClick={onBayClick} campus={campus} isAdminMode={isAdminMode} />
+      {bays.map((b, i) => (
+        <Bay key={b} bayIndex={b} bayIdx={i + 1} totalBays={bays.length} mat={mat} rackNumber={rackNumber} shelves={shelves} onBayClick={onBayClick} campus={campus} isAdminMode={isAdminMode} />
       ))}
 
       {/* Nhãn số kệ ở đầu dãy (Trái) */}
@@ -419,7 +431,7 @@ function AdminGrid({ onAddRackAt, visible, racks, campus }: { onAddRackAt?: (x: 
     // We use the same Z formula as the sequential racks to stay aligned with the library floor
     // Thu Duc has 13 sequential racks (1-13), center is 6.5
     // Sai Gon has 12 sequential racks (2-13), center is 6.0
-    const zOffset = campus === 'Thu Duc' ? 6.5 : 16.5;
+    const zOffset = campus === 'Thu Duc' ? 6.5 : 17.0;
 
     for (let col = 0; col < numBays; col++) {
       for (let row = 0; row < numRows; row++) {
@@ -647,21 +659,23 @@ export default function BookshelfScene({
   }, [racks]);
 
   const rackPositions = useMemo(() => {
-    const sorted = [...sequentialRacks].sort((a, b) => {
+    const sorted = [...racks].sort((a, b) => {
       if (campus === 'Thu Duc') return b.rackNumber - a.rackNumber;
       return a.rackNumber - b.rackNumber;
     });
     return sorted.map((rack, index) => {
       const totalRacks = sorted.length;
+      const firstShelf = rack.shelves.find(s => s.positionZ != null);
+      const z = Number(firstShelf?.positionZ ?? -(index - totalRacks / 2) * ROW_SPACING_Z);
       return {
         rackNumber: rack.rackNumber,
-        bays: rack.bays,
+        bays: [...new Set(rack.shelves.map(s => s.bay))].sort((a, b) => a - b),
         shelves: rack.shelves,
         x: 0,
-        z: -(index - totalRacks / 2) * ROW_SPACING_Z,
+        z: z,
       };
     });
-  }, [sequentialRacks, campus]);
+  }, [racks, campus]);
 
   const markerPos = useMemo(() => {
     if (highlightRack === null || highlightBay === null || highlightFace === null) return null;
@@ -844,19 +858,23 @@ export default function BookshelfScene({
 
   return (
     <group>
-      {rackPositions.map((rp) => (
-        <group key={rp.rackNumber} position={[rp.x, 0, rp.z]}>
-          <Rack
-            rackNumber={rp.rackNumber}
-            isHighlighted={rp.rackNumber === highlightRack}
-            bays={rp.bays}
-            shelves={rp.shelves}
-            onBayClick={onBayClick}
-            campus={campus}
-            isAdminMode={isAdminMode}
-          />
-        </group>
-      ))}
+      {rackPositions.map((rp) => {
+        const hasCustomPos = rp.shelves.some(s => s.positionX != null && s.positionZ != null);
+        if (hasCustomPos) return null;
+        return (
+          <group key={rp.rackNumber} position={[rp.x, 0, rp.z]}>
+            <Rack
+              rackNumber={rp.rackNumber}
+              isHighlighted={rp.rackNumber === highlightRack}
+              bays={rp.bays}
+              shelves={rp.shelves}
+              onBayClick={onBayClick}
+              campus={campus}
+              isAdminMode={isAdminMode}
+            />
+          </group>
+        );
+      })}
       {features && (
         <>
           {features.rack1Pos && (
@@ -909,6 +927,13 @@ export default function BookshelfScene({
               <group position={[-1.65, 0, 0.49]}>
                 <Bay
                   bayIndex={cbay.bay}
+                  bayIdx={
+                    (racks.find(r => r.rackNumber === cbay.rackNumber)?.shelves
+                      .map(s => s.bay)
+                      .filter((v, idx, arr) => arr.indexOf(v) === idx)
+                      .sort((a, b) => a - b)
+                      .indexOf(cbay.bay) ?? -1) + 1 || undefined
+                  }
                   totalBays={racks.find(r => r.rackNumber === cbay.rackNumber)?.bays.length || 1}
                   mat={highlightRack === cbay.rackNumber && highlightBay === cbay.bay ? woodMatHL : woodMat}
                   rackNumber={cbay.rackNumber}

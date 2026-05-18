@@ -219,6 +219,10 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   }, [editingShelf, addingShelfPos, isAdminMode, adminSubMode, onEditingChange]);
 
   const handleUpdateDewey = async (id: number, deweyStart: number, deweyEnd: number) => {
+    if (deweyStart > deweyEnd) {
+      alert('Lỗi: Dewey Start phải nhỏ hơn hoặc bằng Dewey End!');
+      return;
+    }
     try {
       const res = await fetch(`/api/admin/shelves/${id}`, {
         method: 'PUT',
@@ -263,9 +267,9 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       return;
     }
 
-    // 2. Kiểm tra Dewey Start < Dewey End
-    if (deweyStart1 >= deweyEnd1 || deweyStart2 >= deweyEnd2) {
-      alert('Lỗi: Dewey Start phải nhỏ hơn Dewey End!');
+    // 2. Kiểm tra Dewey Start <= Dewey End
+    if (deweyStart1 > deweyEnd1 || deweyStart2 > deweyEnd2) {
+      alert('Lỗi: Dewey Start phải nhỏ hơn hoặc bằng Dewey End!');
       return;
     }
 
