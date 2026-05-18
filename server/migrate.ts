@@ -4,6 +4,7 @@ import XLSX from 'xlsx';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
+import { recalculateUShapeLabels } from './bookService.js';
 
 dotenv.config();
 
@@ -68,8 +69,18 @@ async function migrate() {
         face INTEGER NOT NULL,
         position_x DECIMAL(10, 2),
         position_z DECIMAL(10, 2),
-        is_deleted BOOLEAN DEFAULT FALSE
+        is_deleted BOOLEAN DEFAULT FALSE,
+        original_letter CHAR(1),
+        original_code VARCHAR(10),
+        original_dewey_start DECIMAL(10, 3),
+        original_dewey_end DECIMAL(10, 3)
       );
+
+      -- Thêm cột nếu bảng đã tồn tại
+      ALTER TABLE shelves ADD COLUMN IF NOT EXISTS original_letter CHAR(1);
+      ALTER TABLE shelves ADD COLUMN IF NOT EXISTS original_code VARCHAR(10);
+      ALTER TABLE shelves ADD COLUMN IF NOT EXISTS original_dewey_start DECIMAL(10, 3);
+      ALTER TABLE shelves ADD COLUMN IF NOT EXISTS original_dewey_end DECIMAL(10, 3);
 
       -- Chuyển Unique Constraint sang Partial Index để hỗ trợ soft-delete
       DO $$ 
@@ -103,6 +114,14 @@ async function migrate() {
         [campus]
       );
       const campusId = campusRes.rows[0].id;
+
+      // RESET/BACKUP: Đặt lại toàn bộ kệ của cơ sở này về ẩn để khôi phục chuẩn
+      console.log(`🔄 Performing full reset for ${campus} campus...`);
+      await client.query(
+        'UPDATE shelves SET is_deleted = TRUE, dewey_start = 0, dewey_end = 0 WHERE campus_id = $1',
+        [campusId]
+      );
+
       const zOffset = campus === 'Thu Duc' ? 6.5 : 17.0;
 
       // Group by rack for U-Shape logic
@@ -148,7 +167,9 @@ async function migrate() {
             await client.query(
               `UPDATE shelves SET 
                 letter = $1, code = $2, dewey_start = $3, dewey_end = $4, 
-                position_x = $5, position_z = $6, is_deleted = FALSE 
+                position_x = $5, position_z = $6, is_deleted = FALSE,
+                original_letter = $1, original_code = $2,
+                original_dewey_start = $3, original_dewey_end = $4
                WHERE id = $7`,
               [raw.letter, raw.code, raw.deweyStart, raw.deweyEnd, positionX, positionZ, existingByPos.rows[0].id]
             );
@@ -163,21 +184,37 @@ async function migrate() {
               await client.query(
                 `UPDATE shelves SET 
                   rack_number = $1, letter = $2, code = $3, dewey_start = $4, dewey_end = $5, 
-                  bay = $6, face = $7, position_x = $8, position_z = $9, is_deleted = FALSE 
+                  bay = $6, face = $7, position_x = $8, position_z = $9, is_deleted = FALSE,
+                  original_letter = $2, original_code = $3,
+                  original_dewey_start = $4, original_dewey_end = $5
                  WHERE id = $10`,
                 [raw.rackNumber, raw.letter, raw.code, raw.deweyStart, raw.deweyEnd, bay, face, positionX, positionZ, existingByCode.rows[0].id]
               );
             } else {
               // Nếu chưa có bất kỳ cái nào -> Insert mới
               await client.query(
-                `INSERT INTO shelves (campus_id, rack_number, letter, code, dewey_start, dewey_end, bay, face, position_x, position_z, is_deleted)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE)`,
+                `INSERT INTO shelves (campus_id, rack_number, letter, code, dewey_start, dewey_end, bay, face, position_x, position_z, is_deleted, original_letter, original_code, original_dewey_start, original_dewey_end)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE, $3, $4, $5, $6)`,
                 [campusId, raw.rackNumber, raw.letter, raw.code, raw.deweyStart, raw.deweyEnd, bay, face, positionX, positionZ]
               );
             }
           }
         }
       }
+
+      // Thu thập và tính toán lại nhãn U-Shape/Z-Shape cho toàn bộ kệ
+      const racksToRecalculate = new Set<number>();
+      for (const [, raws] of rawMap) {
+        for (const raw of raws) {
+          racksToRecalculate.add(raw.rackNumber);
+        }
+      }
+
+      console.log(`⚙️ Recalculating dynamic labels & Dewey ranges for ${campus}...`);
+      for (const rackNumber of racksToRecalculate) {
+        await recalculateUShapeLabels(campusId, rackNumber);
+      }
+
       console.log(`✅ Migrated ${campus}.`);
     }
 
