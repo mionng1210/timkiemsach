@@ -183,26 +183,52 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const [adminSubMode, setAdminSubMode] = useState<'menu' | 'add' | 'manage' | 'hidden' | null>(null);
   const [editingShelf, setEditingShelf] = useState<ShelfInfo | null>(null);
   const [prefilledDewey, setPrefilledDewey] = useState<{
-    s1: string, e1: string, s2: string, e2: string
-  }>({ s1: '0.000', e1: '999.999', s2: '0.000', e2: '999.999' });
+    s1: string, e1: string, s2: string, e2: string, c1: string, c2: string
+  }>({ s1: '0.000', e1: '999.999', s2: '0.000', e2: '999.999', c1: '', c2: '' });
+
+  const suggestedCodes = useMemo(() => {
+    if (!addingShelfPos) return { code1: '', code2: '' };
+    const rNum = formRackNumber;
+    const bIdx = formBay;
+
+    const rack = racks.find(r => r.rackNumber === rNum);
+    const existingBays = rack ? rack.bays : [];
+    const allBays = [...new Set([...existingBays, bIdx])].sort((a, b) => a - b);
+    const N = allBays.length;
+    const currentPos = allBays.indexOf(bIdx) + 1;
+
+    if (campus === 'Thu Duc') {
+      // Thủ Đức: Dạng Z-shape song song (mặt sau 1->N, mặt trước N+1->2N)
+      const c2 = String.fromCharCode(96 + currentPos);
+      const c1 = String.fromCharCode(96 + N + currentPos);
+      return { code1: `${rNum}${c1}`, code2: `${rNum}${c2}` };
+    } else {
+      // Sài Gòn: Bắt đầu từ mặt trước Bay 1 (c1)
+      const c1 = String.fromCharCode(96 + currentPos);
+      const c2 = String.fromCharCode(96 + (2 * N - currentPos + 1));
+      return { code1: `${rNum}${c1}`, code2: `${rNum}${c2}` };
+    }
+  }, [addingShelfPos, racks, campus, formRackNumber, formBay]);
 
   // Tự động tìm kiếm dữ liệu cũ khi click vào một ô trống để "Thêm kệ"
   useEffect(() => {
     if (addingShelfPos) {
       const fetchOldData = async () => {
         try {
-          // Tra cứu mặt trước (1)
-          const r1 = await fetch(`/api/admin/shelves/lookup?campus=${encodeURIComponent(campus)}&rackNumber=${addingShelfPos.rackNumber}&bay=${addingShelfPos.bay}&face=1`);
+          // Tra cứu mặt trước (1) theo vị trí vật lý
+          const r1 = await fetch(`/api/admin/shelves/lookup?campus=${encodeURIComponent(campus)}&rackNumber=${formRackNumber}&bay=${formBay}&face=1`);
           const d1 = await r1.json();
-          // Tra cứu mặt sau (2)
-          const r2 = await fetch(`/api/admin/shelves/lookup?campus=${encodeURIComponent(campus)}&rackNumber=${addingShelfPos.rackNumber}&bay=${addingShelfPos.bay}&face=2`);
+          // Tra cứu mặt sau (2) theo vị trí vật lý
+          const r2 = await fetch(`/api/admin/shelves/lookup?campus=${encodeURIComponent(campus)}&rackNumber=${formRackNumber}&bay=${formBay}&face=2`);
           const d2 = await r2.json();
 
           setPrefilledDewey({
             s1: (d1 && !d1.error && d1.deweyStart != null) ? Number(d1.deweyStart).toFixed(3) : '0.000',
             e1: (d1 && !d1.error && d1.deweyEnd != null) ? Number(d1.deweyEnd).toFixed(3) : '999.999',
             s2: (d2 && !d2.error && d2.deweyStart != null) ? Number(d2.deweyStart).toFixed(3) : '0.000',
-            e2: (d2 && !d2.error && d2.deweyEnd != null) ? Number(d2.deweyEnd).toFixed(3) : '999.999'
+            e2: (d2 && !d2.error && d2.deweyEnd != null) ? Number(d2.deweyEnd).toFixed(3) : '999.999',
+            c1: suggestedCodes.code1,
+            c2: suggestedCodes.code2
           });
         } catch (e) {
           console.error('Lỗi khi tra cứu dữ liệu kệ cũ:', e);
@@ -210,7 +236,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       };
       fetchOldData();
     }
-  }, [addingShelfPos, campus]);
+  }, [addingShelfPos, campus, formRackNumber, formBay, suggestedCodes]);
 
   useEffect(() => {
     const isMenuOpen = isAdminMode && adminSubMode !== 'hidden' && adminSubMode !== null;
@@ -465,29 +491,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     }
   }, [editingShelf, addingShelfPos]);
 
-  const suggestedCodes = useMemo(() => {
-    if (!addingShelfPos) return { code1: '', code2: '' };
-    const rNum = formRackNumber;
-    const bIdx = formBay;
-
-    const rack = racks.find(r => r.rackNumber === rNum);
-    const existingBays = rack ? rack.bays : [];
-    const allBays = [...new Set([...existingBays, bIdx])].sort((a, b) => a - b);
-    const N = allBays.length;
-    const currentPos = allBays.indexOf(bIdx) + 1;
-
-    if (campus === 'Thu Duc') {
-      // Thủ Đức: Bắt đầu từ mặt sau Bay 1 (c2)
-      const c2 = String.fromCharCode(96 + currentPos);
-      const c1 = String.fromCharCode(96 + (2 * N - currentPos + 1));
-      return { code1: `${rNum}${c1}`, code2: `${rNum}${c2}` };
-    } else {
-      // Sài Gòn: Bắt đầu từ mặt trước Bay 1 (c1)
-      const c1 = String.fromCharCode(96 + currentPos);
-      const c2 = String.fromCharCode(96 + (2 * N - currentPos + 1));
-      return { code1: `${rNum}${c1}`, code2: `${rNum}${c2}` };
-    }
-  }, [addingShelfPos, racks, campus]);
 
   return (
     <div className="viewer-panel">
@@ -585,30 +588,37 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
             onPathCalculated={setGuideWaypoints}
             isAdminMode={isAdminMode && adminSubMode === 'add'}
             onAddRackAt={(x, z) => {
-              // Tìm kiếm các kệ lân cận để gợi ý số Rack và số Bay
+              // Tính số Rack mặc định dựa trên toạ độ Z chuẩn
               let suggestedRack = 10;
+              if (campus === 'Thu Duc') {
+                suggestedRack = Math.round(z / 4.0 + 7.5);
+              } else {
+                suggestedRack = Math.round(-z / 4.0 + 18.0);
+              }
+              suggestedRack = Math.max(1, suggestedRack);
+
               let suggestedBay = 1;
 
               // Lấy tất cả shelves có toạ độ X, Z (custom shelves)
               const customShelves = racks.flatMap(r => r.shelves).filter(s => s.positionX != null && s.positionZ != null);
 
-               // Tìm kệ cùng trục Z để lấy RackNumber
-               const sameZShelves = customShelves.filter(s => Math.abs(s.positionZ! - z) < 0.1);
-               if (sameZShelves.length > 0) {
-                 suggestedRack = sameZShelves[0].rackNumber;
-               }
+              // Tìm kệ cùng trục Z để lấy RackNumber
+              const sameZShelves = customShelves.filter(s => Math.abs(s.positionZ! - z) < 0.1);
+              if (sameZShelves.length > 0) {
+                suggestedRack = sameZShelves[0].rackNumber;
+              }
 
-               // 2. Tính số Bay mặc định dựa trên toạ độ X chuẩn
-               // Thu Duc: x = -12 là bay 1, x = -9 là bay 2...
-               // Sai Gon: x = -1.35 là bay 1, x = 1.65 là bay 2...
-               const startX = 0;
-               suggestedBay = Math.round((x - startX) / 3.0) + 1;
+              // 2. Tính số Bay mặc định dựa trên toạ độ X chuẩn
+              // Thu Duc: x = -12 là bay 1, x = -9 là bay 2...
+              // Sai Gon: x = -1.35 là bay 1, x = 1.65 là bay 2...
+              const startX = 0;
+              suggestedBay = Math.round((x - startX) / 3.0) + 1;
 
-               // 3. Ràng buộc: Không cho tạo phía trước Bay 1
-               if (suggestedBay < 1 || x < (startX - 0.1)) {
-                 alert('Vị trí này nằm ngoài phạm vi cho phép (phía trước Bay 1). Vui lòng chọn vị trí khác.');
-                 return;
-               }
+              // 3. Ràng buộc: Không cho tạo phía trước Bay 1
+              if (suggestedBay < 1 || x < (startX - 0.1)) {
+                alert('Vị trí này nằm ngoài phạm vi cho phép (phía trước Bay 1). Vui lòng chọn vị trí khác.');
+                return;
+              }
 
               setAddingShelfPos({
                 x,
@@ -773,11 +783,19 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
 
           <div className="admin-form-group">
             <label>Số Rack (VD: 10):</label>
-            <input 
-              type="number" 
-              id="addRackNumber" 
-              value={formRackNumber} 
-              onChange={(e) => setFormRackNumber(parseInt(e.target.value) || 0)}
+            <input
+              type="number"
+              id="addRackNumber"
+              value={formRackNumber}
+              readOnly={true}
+              style={{
+                backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                color: 'rgba(232, 236, 244, 0.4)',
+                cursor: 'not-allowed',
+                border: '1px solid var(--border)',
+                fontWeight: 'bold',
+                opacity: 1
+              }}
             />
           </div>
           <div className="admin-form-group">
@@ -801,36 +819,22 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
 
           <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt trước (1)</div>
           <div className="admin-form-group">
-            <label>Mã dãy (tự động):</label>
-            <div style={{ padding: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', color: '#6366f1', fontWeight: 'bold' }}>
-              {suggestedCodes.code1.toUpperCase()}
-              <input type="hidden" id="addCode1" value={suggestedCodes.code1} />
-            </div>
-          </div>
-          <div className="admin-form-group">
             <label>Dewey Start:</label>
-            <input type="text" id="addDeweyStart1" key={`s1-${prefilledDewey.s1}`} defaultValue={prefilledDewey.s1} />
+            <input type="text" id="addDeweyStart1" key={`s1-${formRackNumber}-${formBay}-${prefilledDewey.s1}`} defaultValue={prefilledDewey.s1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
           </div>
           <div className="admin-form-group">
             <label>Dewey End:</label>
-            <input type="text" id="addDeweyEnd1" key={`e1-${prefilledDewey.e1}`} defaultValue={prefilledDewey.e1} />
+            <input type="text" id="addDeweyEnd1" key={`e1-${formRackNumber}-${formBay}-${prefilledDewey.e1}`} defaultValue={prefilledDewey.e1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
           </div>
 
           <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt sau (2)</div>
           <div className="admin-form-group">
-            <label>Mã dãy (tự động):</label>
-            <div style={{ padding: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', color: '#6366f1', fontWeight: 'bold' }}>
-              {suggestedCodes.code2.toUpperCase()}
-              <input type="hidden" id="addCode2" value={suggestedCodes.code2} />
-            </div>
-          </div>
-          <div className="admin-form-group">
             <label>Dewey Start:</label>
-            <input type="text" id="addDeweyStart2" key={`s2-${prefilledDewey.s2}`} defaultValue={prefilledDewey.s2} />
+            <input type="text" id="addDeweyStart2" key={`s2-${formRackNumber}-${formBay}-${prefilledDewey.s2}`} defaultValue={prefilledDewey.s2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
           </div>
           <div className="admin-form-group">
             <label>Dewey End:</label>
-            <input type="text" id="addDeweyEnd2" key={`e2-${prefilledDewey.e2}`} defaultValue={prefilledDewey.e2} />
+            <input type="text" id="addDeweyEnd2" key={`e2-${formRackNumber}-${formBay}-${prefilledDewey.e2}`} defaultValue={prefilledDewey.e2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
           </div>
 
           <div className="admin-actions">

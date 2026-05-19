@@ -163,7 +163,11 @@ export async function searchByCode(code: string, campusName?: string): Promise<S
 export async function lookupShelf(campusName: string, rackNumber: number, bay: number, face: number) {
   try {
     const res = await pool.query(`
-      SELECT s.id, s.dewey_start as "deweyStart", s.dewey_end as "deweyEnd", s.is_deleted as "isDeleted"
+      SELECT s.id, 
+             COALESCE(s.original_dewey_start, s.dewey_start) as "deweyStart", 
+             COALESCE(s.original_dewey_end, s.dewey_end) as "deweyEnd", 
+             COALESCE(s.original_code, s.code) as "code",
+             s.is_deleted as "isDeleted"
       FROM shelves s
       JOIN campuses c ON s.campus_id = c.id
       WHERE LOWER(c.name) = LOWER($1) AND s.rack_number = $2 AND s.bay = $3 AND s.face = $4
@@ -173,6 +177,29 @@ export async function lookupShelf(campusName: string, rackNumber: number, bay: n
     return null;
   } catch (err) {
     console.error('Error looking up shelf:', err);
+    return null;
+  }
+}
+
+export async function lookupShelfByCode(campusName: string, code: string) {
+  try {
+    const res = await pool.query(`
+      SELECT s.id, 
+             COALESCE(s.original_dewey_start, s.dewey_start) as "deweyStart", 
+             COALESCE(s.original_dewey_end, s.dewey_end) as "deweyEnd", 
+             COALESCE(s.original_code, s.code) as "code",
+             s.is_deleted as "isDeleted"
+      FROM shelves s
+      JOIN campuses c ON s.campus_id = c.id
+      WHERE LOWER(c.name) = LOWER($1) AND (LOWER(s.original_code) = LOWER($2) OR LOWER(s.code) = LOWER($2))
+      ORDER BY s.id DESC
+      LIMIT 1
+    `, [campusName, code]);
+
+    if (res.rows.length > 0) return res.rows[0];
+    return null;
+  } catch (err) {
+    console.error('Error looking up shelf by code:', err);
     return null;
   }
 }
@@ -324,7 +351,7 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
       if (s.charIdx > 0) {
         const letter = String.fromCharCode(96 + s.charIdx).toUpperCase(); // 'A', 'B'...
         const newCode = `${rackNumber}${letter.toLowerCase()}`;
-        
+
         const dewey = origRanges[idx] || { deweyStart: 0, deweyEnd: 0 };
 
         await pool.query(`
@@ -408,7 +435,7 @@ export async function deleteShelf(id: number): Promise<boolean> {
   try {
     // Lấy thông tin rack để recalculate trước khi xóa
     const infoRes = await pool.query('SELECT campus_id, rack_number FROM shelves WHERE id = $1', [id]);
-    
+
     await pool.query('UPDATE shelves SET is_deleted = TRUE WHERE id = $1', [id]);
 
     if (infoRes.rows.length > 0) {
@@ -449,7 +476,7 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
     // Sanitization & Fallback to prevent NOT NULL constraint violation on dewey_start/dewey_end
     const cleanDeweyStart = (deweyStart === null || deweyStart === undefined || isNaN(Number(deweyStart))) ? 0.0 : Number(deweyStart);
     const cleanDeweyEnd = (deweyEnd === null || deweyEnd === undefined || isNaN(Number(deweyEnd))) ? 0.0 : Number(deweyEnd);
-    
+
     // Lấy campus_id từ name
     const campusRes = await pool.query('SELECT id FROM campuses WHERE LOWER(name) = LOWER($1)', [campusNameStr]);
     if (campusRes.rows.length === 0) return false;
@@ -457,7 +484,7 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
 
     // Tìm kiếm vị trí kệ đã được "tạo sẵn" (pre-allocated) theo tọa độ/vị trí
     const existingRes = await pool.query(
-      'SELECT id FROM shelves WHERE campus_id = $1 AND rack_number = $2 AND bay = $3 AND face = $4', 
+      'SELECT id FROM shelves WHERE campus_id = $1 AND rack_number = $2 AND bay = $3 AND face = $4',
       [campusId, rackNumber, bay, face]
     );
 
@@ -485,7 +512,7 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE, $11, $12, $2, $3)
       `, [tempCode, cleanDeweyStart, cleanDeweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ, pristineLetter, `${rackNumber}${pristineLetter}`]);
     }
-    
+
     if (campusId && rackNumber) {
       await recalculateUShapeLabels(campusId, rackNumber as number);
     }

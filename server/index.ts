@@ -10,7 +10,8 @@ import {
   deleteBay,
   addShelf,
   loginAdmin,
-  lookupShelf
+  lookupShelf,
+  lookupShelfByCode
 } from './bookService.js';
 
 const app = express();
@@ -108,6 +109,18 @@ app.get('/api/admin/shelves/lookup', async (req, res) => {
       parseInt(bay as string), 
       parseInt(face as string)
     );
+    if (data) return res.json(data);
+    return res.status(404).json({ error: 'Shelf not found' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Lookup failed' });
+  }
+});
+
+// Tra cứu thông tin kệ theo code (Mã)
+app.get('/api/admin/shelves/lookupByCode', async (req, res) => {
+  const { campus, code } = req.query;
+  try {
+    const data = await lookupShelfByCode(campus as string, code as string);
     if (data) return res.json(data);
     return res.status(404).json({ error: 'Shelf not found' });
   } catch (err) {
