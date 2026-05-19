@@ -199,10 +199,10 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           const d2 = await r2.json();
 
           setPrefilledDewey({
-            s1: (d1 && !d1.error) ? d1.deweyStart.toFixed(3) : '0.000',
-            e1: (d1 && !d1.error) ? d1.deweyEnd.toFixed(3) : '999.999',
-            s2: (d2 && !d2.error) ? d2.deweyStart.toFixed(3) : '0.000',
-            e2: (d2 && !d2.error) ? d2.deweyEnd.toFixed(3) : '999.999'
+            s1: (d1 && !d1.error && d1.deweyStart != null) ? Number(d1.deweyStart).toFixed(3) : '0.000',
+            e1: (d1 && !d1.error && d1.deweyEnd != null) ? Number(d1.deweyEnd).toFixed(3) : '999.999',
+            s2: (d2 && !d2.error && d2.deweyStart != null) ? Number(d2.deweyStart).toFixed(3) : '0.000',
+            e2: (d2 && !d2.error && d2.deweyEnd != null) ? Number(d2.deweyEnd).toFixed(3) : '999.999'
           });
         } catch (e) {
           console.error('Lỗi khi tra cứu dữ liệu kệ cũ:', e);
@@ -267,7 +267,12 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       return;
     }
 
-    // 2. Kiểm tra Dewey Start <= Dewey End
+    // 2. Kiểm tra Dewey Start, Dewey End có hợp lệ
+    if (isNaN(deweyStart1) || isNaN(deweyEnd1) || isNaN(deweyStart2) || isNaN(deweyEnd2)) {
+      alert('Lỗi: Giá trị Dewey Start và Dewey End phải là số hợp lệ và không được để trống!');
+      return;
+    }
+
     if (deweyStart1 > deweyEnd1 || deweyStart2 > deweyEnd2) {
       alert('Lỗi: Dewey Start phải nhỏ hơn hoặc bằng Dewey End!');
       return;
