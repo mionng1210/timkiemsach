@@ -243,19 +243,43 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
       SELECT original_letter as "letter", 
              original_dewey_start as "deweyStart", 
              original_dewey_end as "deweyEnd",
-             face
+             face,
+             bay
       FROM shelves
       WHERE campus_id = $1 AND rack_number = $2 AND original_letter IS NOT NULL
     `, [campusId, rackNumber]);
 
-    const origRangesByFace = {
-      1: origRes.rows.filter(r => r.face === 1 && r.letter)
-        .map(r => ({ letter: r.letter.toUpperCase().trim(), deweyStart: Number(r.deweyStart), deweyEnd: Number(r.deweyEnd) }))
-        .sort((a, b) => a.letter.localeCompare(b.letter)),
-      2: origRes.rows.filter(r => r.face === 2 && r.letter)
-        .map(r => ({ letter: r.letter.toUpperCase().trim(), deweyStart: Number(r.deweyStart), deweyEnd: Number(r.deweyEnd) }))
-        .sort((a, b) => a.letter.localeCompare(b.letter)),
+    const isThuDuc = campusName.toLowerCase().includes('thu duc');
+
+    const sortUPath = (a: any, b: any) => {
+      if (a.face !== b.face) {
+        return a.face - b.face; // Face 1 first, then Face 2
+      }
+      if (a.face === 1) {
+        return a.bay - b.bay; // Face 1: ascending bay
+      } else {
+        return b.bay - a.bay; // Face 2: descending bay
+      }
     };
+
+    const sortZPath = (a: any, b: any) => {
+      if (a.face !== b.face) {
+        return b.face - a.face; // Face 2 first, then Face 1
+      }
+      return a.bay - b.bay; // Both faces: ascending bay
+    };
+
+    const pathSortFn = isThuDuc ? sortZPath : sortUPath;
+
+    const origRanges = origRes.rows
+      .map(r => ({
+        letter: r.letter.toUpperCase().trim(),
+        deweyStart: Number(r.deweyStart),
+        deweyEnd: Number(r.deweyEnd),
+        face: r.face,
+        bay: r.bay
+      }))
+      .sort(pathSortFn);
 
     // Determine unique bays and map them to 1..N
     const uniqueBays = [...new Set(shelves.map(s => s.bay))].sort((a, b) => a - b);
@@ -264,7 +288,7 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
 
     // Calculate charIdx for each shelf and sort the shelves by charIdx
     const shelvesWithCharIdx = shelves.map(s => {
-      const bayIdx = bayToIndex.get(s.bay)!;
+      const bayIdx = bayToIndex.get(s.bay) || 1;
       let charIdx = 0;
 
       if (campusName === 'Sai Gon') {
@@ -301,14 +325,7 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
         const letter = String.fromCharCode(96 + s.charIdx).toUpperCase(); // 'A', 'B'...
         const newCode = `${rackNumber}${letter.toLowerCase()}`;
         
-        // Map face-by-face using index of active shelves on this face
-        const activeShelvesOnFace = shelvesWithCharIdx
-          .filter(x => x.face === s.face)
-          .sort((a, b) => a.bay - b.bay);
-
-        const idxOnFace = activeShelvesOnFace.findIndex(x => x.id === s.id);
-        const faceRanges = origRangesByFace[s.face as 1 | 2] || [];
-        const dewey = faceRanges[idxOnFace] || { deweyStart: 0, deweyEnd: 0 };
+        const dewey = origRanges[idx] || { deweyStart: 0, deweyEnd: 0 };
 
         await pool.query(`
           UPDATE shelves 
@@ -324,6 +341,9 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
 
 export async function updateShelf(id: number, data: Partial<ShelfRow>): Promise<boolean> {
   try {
+    const deweyStartVal = (data.deweyStart !== undefined && data.deweyStart !== null && !isNaN(Number(data.deweyStart))) ? Number(data.deweyStart) : undefined;
+    const deweyEndVal = (data.deweyEnd !== undefined && data.deweyEnd !== null && !isNaN(Number(data.deweyEnd))) ? Number(data.deweyEnd) : undefined;
+
     // Lấy thông tin về campus, rack và letter hiện tại của kệ đang active
     const infoRes = await pool.query(
       'SELECT campus_id as "campusId", rack_number as "rackNumber", letter FROM shelves WHERE id = $1',
@@ -337,15 +357,15 @@ export async function updateShelf(id: number, data: Partial<ShelfRow>): Promise<
       const origFields: string[] = [];
       const origValues: any[] = [];
       let i = 1;
-      if (data.deweyStart !== undefined) {
+      if (deweyStartVal !== undefined) {
         origFields.push(`dewey_start = $${i}, original_dewey_start = $${i}`);
         i++;
-        origValues.push(data.deweyStart);
+        origValues.push(deweyStartVal);
       }
-      if (data.deweyEnd !== undefined) {
+      if (deweyEndVal !== undefined) {
         origFields.push(`dewey_end = $${i}, original_dewey_end = $${i}`);
         i++;
-        origValues.push(data.deweyEnd);
+        origValues.push(deweyEndVal);
       }
       if (origFields.length > 0) {
         origValues.push(campusId, rackNumber, letter.toUpperCase());
@@ -362,13 +382,13 @@ export async function updateShelf(id: number, data: Partial<ShelfRow>): Promise<
     const values: any[] = [];
     let i = 1;
 
-    if (data.deweyStart !== undefined) {
+    if (deweyStartVal !== undefined) {
       fields.push(`dewey_start = $${i++}`);
-      values.push(data.deweyStart);
+      values.push(deweyStartVal);
     }
-    if (data.deweyEnd !== undefined) {
+    if (deweyEndVal !== undefined) {
       fields.push(`dewey_end = $${i++}`);
-      values.push(data.deweyEnd);
+      values.push(deweyEndVal);
     }
 
     if (fields.length === 0) return false;
@@ -425,6 +445,10 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
   try {
     const { code, deweyStart, deweyEnd, campus, rackNumber, letter, bay, face, positionX, positionZ } = data;
     const campusNameStr = campus || '';
+
+    // Sanitization & Fallback to prevent NOT NULL constraint violation on dewey_start/dewey_end
+    const cleanDeweyStart = (deweyStart === null || deweyStart === undefined || isNaN(Number(deweyStart))) ? 0.0 : Number(deweyStart);
+    const cleanDeweyEnd = (deweyEnd === null || deweyEnd === undefined || isNaN(Number(deweyEnd))) ? 0.0 : Number(deweyEnd);
     
     // Lấy campus_id từ name
     const campusRes = await pool.query('SELECT id FROM campuses WHERE LOWER(name) = LOWER($1)', [campusNameStr]);
@@ -452,14 +476,14 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
             original_letter = $7, original_code = $8,
             original_dewey_start = $2, original_dewey_end = $3
         WHERE id = $9
-      `, [tempCode, deweyStart, deweyEnd, letter || 'A', positionX, positionZ, pristineLetter, `${rackNumber}${pristineLetter}`, shelfId]);
+      `, [tempCode, cleanDeweyStart, cleanDeweyEnd, letter || 'A', positionX, positionZ, pristineLetter, `${rackNumber}${pristineLetter}`, shelfId]);
     } else {
       // Dự phòng: Nếu vì lý do nào đó vị trí này chưa có (chưa chạy seed), thì insert mới hoàn toàn
       const pristineLetter = getPristineLetter(campusNameStr, bay as number, face as number);
       await pool.query(`
         INSERT INTO shelves (code, dewey_start, dewey_end, campus_id, rack_number, letter, bay, face, position_x, position_z, is_deleted, original_letter, original_code, original_dewey_start, original_dewey_end)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE, $11, $12, $2, $3)
-      `, [tempCode, deweyStart, deweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ, pristineLetter, `${rackNumber}${pristineLetter}`]);
+      `, [tempCode, cleanDeweyStart, cleanDeweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ, pristineLetter, `${rackNumber}${pristineLetter}`]);
     }
     
     if (campusId && rackNumber) {
