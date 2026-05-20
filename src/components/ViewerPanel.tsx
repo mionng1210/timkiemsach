@@ -904,15 +904,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </div>
       )}
 
-
-      {!selectedResult && (
-        <div className="empty-state" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-          <div className="empty-state-icon">🏗️</div>
-          <h3>Chọn một kệ sách</h3>
-          <p>Tìm kiếm bên trái và chọn kệ để xem vị trí trên mô hình 3D</p>
-        </div>
-      )}
-
       {showStartPicker && (
         <div className="start-picker-overlay">
           <div className="start-picker-card">

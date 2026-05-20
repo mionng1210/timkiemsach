@@ -34,10 +34,10 @@ const clickMat = new THREE.MeshBasicMaterial({ visible: false });
 
 // Bảng màu xoay vòng cho các kệ: vàng → xanh lá → cam → xanh dương
 const RACK_COLORS = [
-  { base: '#c8a92e', hl: '#ffe066', hover: '#d4b840', emissive: '#3a3000' },  // Vàng
-  { base: '#2e8b57', hl: '#4fd68d', hover: '#3a9d68', emissive: '#0a2a15' },  // Xanh lá
-  { base: '#cc6b2e', hl: '#f0a060', hover: '#d47e40', emissive: '#3a1a00' },  // Cam
-  { base: '#2e6eb5', hl: '#60a0f0', hover: '#4080c8', emissive: '#001a3a' },  // Xanh dương
+  { base: '#ffe94a', hl: '#fff68a', hover: '#fff05f', emissive: '#806600' },  // Vàng
+  { base: '#42ff8f', hl: '#8affbd', hover: '#63ffa3', emissive: '#005c2c' },  // Xanh lá
+  { base: '#ffad33', hl: '#ffd084', hover: '#ffbd55', emissive: '#7a3500' },  // Cam
+  { base: '#4aa3ff', hl: '#91c9ff', hover: '#6bb5ff', emissive: '#004080' },  // Xanh dương
 ];
 
 const rackMatsCache = new Map<number, { normal: THREE.Material, hl: THREE.Material, hover: THREE.Material }>();
@@ -46,9 +46,9 @@ function getRackMats(rackNumber: number) {
   if (rackMatsCache.has(rackNumber)) return rackMatsCache.get(rackNumber)!;
   const palette = RACK_COLORS[(rackNumber - 1) % RACK_COLORS.length];
   const mats = {
-    normal: new THREE.MeshLambertMaterial({ color: palette.base }),
-    hl: new THREE.MeshLambertMaterial({ color: palette.hl, emissive: palette.emissive, emissiveIntensity: 0.5 }),
-    hover: new THREE.MeshLambertMaterial({ color: palette.hover, emissive: palette.emissive, emissiveIntensity: 0.3 }),
+    normal: new THREE.MeshLambertMaterial({ color: palette.base, emissive: palette.emissive, emissiveIntensity: 0.22 }),
+    hl: new THREE.MeshLambertMaterial({ color: palette.hl, emissive: palette.emissive, emissiveIntensity: 0.65 }),
+    hover: new THREE.MeshLambertMaterial({ color: palette.hover, emissive: palette.emissive, emissiveIntensity: 0.35 }),
   };
   rackMatsCache.set(rackNumber, mats);
   return mats;
@@ -945,20 +945,20 @@ export default function BookshelfScene({
       {/* Render custom shelves added via Admin grid */}
       {customBays.map((cbay) => {
         const isThuDuc = campus === 'Thu Duc';
+        const rack = racks.find(r => r.rackNumber === cbay.rackNumber);
+        const rackBays = rack?.shelves
+          .map(s => s.bay)
+          .filter((v, idx, arr) => arr.indexOf(v) === idx)
+          .sort((a, b) => a - b) ?? [];
+        const bayIdx = rackBays.indexOf(cbay.bay) + 1;
         return (
           <group key={`cbay-${cbay.rackNumber}-${cbay.bay}`} position={[cbay.positionX, 0, cbay.positionZ]}>
             <group position={[1.65, 0, -0.49]}>
               <group position={[-1.65, 0, 0.49]}>
                 <Bay
                   bayIndex={cbay.bay}
-                  bayIdx={
-                    (racks.find(r => r.rackNumber === cbay.rackNumber)?.shelves
-                      .map(s => s.bay)
-                      .filter((v, idx, arr) => arr.indexOf(v) === idx)
-                      .sort((a, b) => a - b)
-                      .indexOf(cbay.bay) ?? -1) + 1 || undefined
-                  }
-                  totalBays={racks.find(r => r.rackNumber === cbay.rackNumber)?.bays.length || 1}
+                  bayIdx={bayIdx || undefined}
+                  totalBays={rack?.bays.length || 1}
                   mat={highlightRack === cbay.rackNumber && highlightBay === cbay.bay ? getRackMats(cbay.rackNumber).hl : getRackMats(cbay.rackNumber).normal}
                   rackNumber={cbay.rackNumber}
                   shelves={cbay.shelves}
@@ -968,8 +968,8 @@ export default function BookshelfScene({
                   overrideOffsetX={0}
                 />
 
-                {/* Hiển thị nhãn số kệ nếu là khoang đầu tiên (bay === 1) */}
-                {cbay.bay === 1 && (
+                {/* Hiển thị nhãn số kệ nếu là khoang đầu tiên đang có trong dãy */}
+                {bayIdx === 1 && (
                   <group position={[0.05, 4.5, -0.5]} rotation={[0, -Math.PI / 2, 0]}>
                     <mesh>
                       <circleGeometry args={[0.28, 32]} />
