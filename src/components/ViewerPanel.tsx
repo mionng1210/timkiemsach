@@ -149,29 +149,6 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     return new THREE.Vector3(x, y, z);
   }, [shelf, racks, campus]);
 
-  const targetPos = useMemo(() => {
-    if (!shelf || racks.length === 0) return new THREE.Vector3(-15, 0, -30);
-
-    if (campus === 'Sai Gon') {
-      const sequentialRacks = racks.filter(r => r.shelves.some(s => s.positionX == null));
-      const sorted = [...sequentialRacks].sort((a, b) => a.rackNumber - b.rackNumber);
-      // Đặt mục tiêu ở giữa không gian từ cửa ra vào tới kệ sách để dễ nhìn đường đi
-      const rack2Index = sorted.findIndex((r) => r.rackNumber === 2);
-      const rack2Z = rack2Index !== -1 ? -(rack2Index - sorted.length / 2) * 4.0 : 0;
-      const startZ = rack2Z + 10;
-      const startX = -31.6;
-
-      return new THREE.Vector3((startX + shelfPos.x) / 2, shelfPos.y, (startZ + shelfPos.z) / 2);
-    }
-
-    if (campus === 'Thu Duc') {
-      // Góc nhìn tổng quan từ cửa thang máy cho Thủ Đức để thấy toàn bộ đường đi
-      return new THREE.Vector3(-45, 25, 45);
-    }
-
-    return shelfPos;
-  }, [shelf, racks, campus, shelfPos]);
-
   const clearFocus = () => {
     setFocusRack(null);
     setFocusBay(null);
@@ -672,7 +649,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           )
         )}
 
-        {!isGuideMode && <FocusManager target={focusShelfPos ?? targetPos} isPathView={focusShelfPos !== null} campus={campus} highlightFace={focusFace} />}
+        {!isGuideMode && focusShelfPos && <FocusManager target={focusShelfPos} isPathView={true} campus={campus} highlightFace={focusFace} />}
         {isGuideMode && guideWaypoints && (
           <FirstPersonCamera
             waypoints={guideWaypoints}
