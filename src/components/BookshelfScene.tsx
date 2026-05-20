@@ -123,8 +123,8 @@ function Bay({
   return (
     <group position={[offsetX, 0, 0]}>
       {/* Kệ vật lý */}
-      <mesh geometry={sideGeo} material={mat} position={[0.13, 2.5, -0.49]} />
-      <mesh geometry={sideGeo} material={mat} position={[3.17, 2.5, -0.49]} />
+      <mesh geometry={sideGeo} material={activeIdx === 1 ? mat : woodMat} position={[0.13, 2.5, -0.49]} />
+      <mesh geometry={sideGeo} material={woodMat} position={[3.17, 2.5, -0.49]} />
       <mesh geometry={floorGeo} material={woodMat} position={[1.67, 0.1, -0.49]} />
       <mesh geometry={floorGeo} material={woodMat} position={[1.67, 1.0, -0.49]} />
       <mesh geometry={floorGeo} material={woodMat} position={[1.67, 2.0, -0.49]} />
