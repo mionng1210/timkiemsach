@@ -32,6 +32,29 @@ const dividerGeo = new THREE.BoxGeometry(3, 0.05, 0.5);
 const clickGeo = new THREE.BoxGeometry(3, 5, 0.4);
 const clickMat = new THREE.MeshBasicMaterial({ visible: false });
 
+// Bảng màu xoay vòng cho các kệ: vàng → xanh lá → cam → xanh dương
+const RACK_COLORS = [
+  { base: '#c8a92e', hl: '#ffe066', hover: '#d4b840', emissive: '#3a3000' },  // Vàng
+  { base: '#2e8b57', hl: '#4fd68d', hover: '#3a9d68', emissive: '#0a2a15' },  // Xanh lá
+  { base: '#cc6b2e', hl: '#f0a060', hover: '#d47e40', emissive: '#3a1a00' },  // Cam
+  { base: '#2e6eb5', hl: '#60a0f0', hover: '#4080c8', emissive: '#001a3a' },  // Xanh dương
+];
+
+const rackMatsCache = new Map<number, { normal: THREE.Material, hl: THREE.Material, hover: THREE.Material }>();
+
+function getRackMats(rackNumber: number) {
+  if (rackMatsCache.has(rackNumber)) return rackMatsCache.get(rackNumber)!;
+  const palette = RACK_COLORS[(rackNumber - 1) % RACK_COLORS.length];
+  const mats = {
+    normal: new THREE.MeshLambertMaterial({ color: palette.base }),
+    hl: new THREE.MeshLambertMaterial({ color: palette.hl, emissive: palette.emissive, emissiveIntensity: 0.5 }),
+    hover: new THREE.MeshLambertMaterial({ color: palette.hover, emissive: palette.emissive, emissiveIntensity: 0.3 }),
+  };
+  rackMatsCache.set(rackNumber, mats);
+  return mats;
+}
+
+// Fallback mặc định (dùng cho rack không xác định)
 const woodMat = new THREE.MeshLambertMaterial({ color: '#6b4226' });
 const woodMatHL = new THREE.MeshLambertMaterial({
   color: '#b08030',
@@ -102,17 +125,17 @@ function Bay({
       {/* Kệ vật lý */}
       <mesh geometry={sideGeo} material={mat} position={[0.13, 2.5, -0.49]} />
       <mesh geometry={sideGeo} material={mat} position={[3.17, 2.5, -0.49]} />
-      <mesh geometry={floorGeo} material={mat} position={[1.67, 0.1, -0.49]} />
-      <mesh geometry={floorGeo} material={mat} position={[1.67, 1.0, -0.49]} />
-      <mesh geometry={floorGeo} material={mat} position={[1.67, 2.0, -0.49]} />
-      <mesh geometry={floorGeo} material={mat} position={[1.67, 3.0, -0.49]} />
-      <mesh geometry={floorGeo} material={mat} position={[1.67, 4.0, -0.49]} />
-      <mesh geometry={floorGeo} material={mat} position={[1.67, 5.0, -0.49]} />
-      <mesh geometry={dividerGeo} material={mat} position={[1.67, 0.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
-      <mesh geometry={dividerGeo} material={mat} position={[1.67, 1.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
-      <mesh geometry={dividerGeo} material={mat} position={[1.67, 2.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
-      <mesh geometry={dividerGeo} material={mat} position={[1.67, 3.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
-      <mesh geometry={dividerGeo} material={mat} position={[1.67, 4.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
+      <mesh geometry={floorGeo} material={woodMat} position={[1.67, 0.1, -0.49]} />
+      <mesh geometry={floorGeo} material={woodMat} position={[1.67, 1.0, -0.49]} />
+      <mesh geometry={floorGeo} material={woodMat} position={[1.67, 2.0, -0.49]} />
+      <mesh geometry={floorGeo} material={woodMat} position={[1.67, 3.0, -0.49]} />
+      <mesh geometry={floorGeo} material={woodMat} position={[1.67, 4.0, -0.49]} />
+      <mesh geometry={floorGeo} material={woodMat} position={[1.67, 5.0, -0.49]} />
+      <mesh geometry={dividerGeo} material={woodMat} position={[1.67, 0.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
+      <mesh geometry={dividerGeo} material={woodMat} position={[1.67, 1.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
+      <mesh geometry={dividerGeo} material={woodMat} position={[1.67, 2.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
+      <mesh geometry={dividerGeo} material={woodMat} position={[1.67, 3.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
+      <mesh geometry={dividerGeo} material={woodMat} position={[1.67, 4.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
 
       {/* Biển báo tên dãy mặt trước (Face 1) */}
       {face1Shelf && (
@@ -226,7 +249,8 @@ function Rack({
   isAdminMode?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
-  const mat = isHighlighted ? woodMatHL : hovered ? woodMatHover : woodMat;
+  const mats = getRackMats(rackNumber);
+  const mat = isHighlighted ? mats.hl : hovered ? mats.hover : mats.normal;
 
   const face1Shelves = shelves.filter(s => s.face === 1);
   const face2Shelves = shelves.filter(s => s.face === 2);
@@ -935,7 +959,7 @@ export default function BookshelfScene({
                       .indexOf(cbay.bay) ?? -1) + 1 || undefined
                   }
                   totalBays={racks.find(r => r.rackNumber === cbay.rackNumber)?.bays.length || 1}
-                  mat={highlightRack === cbay.rackNumber && highlightBay === cbay.bay ? woodMatHL : woodMat}
+                  mat={highlightRack === cbay.rackNumber && highlightBay === cbay.bay ? getRackMats(cbay.rackNumber).hl : getRackMats(cbay.rackNumber).normal}
                   rackNumber={cbay.rackNumber}
                   shelves={cbay.shelves}
                   campus={campus}
