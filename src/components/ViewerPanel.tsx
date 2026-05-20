@@ -1152,9 +1152,29 @@ function FirstPersonCamera({
     };
   }, [camera]);
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!waypoints || waypoints.length === 0) return;
-    lerpStepRef.current += (currentStep - lerpStepRef.current) * 0.03;
+
+    // Tốc độ đi bộ cố định (đơn vị/giây) — mọi đoạn đều đi cùng tốc độ
+    const WALK_SPEED = 16;
+    const stepDiff = currentStep - lerpStepRef.current;
+
+    if (Math.abs(stepDiff) < 0.005) {
+      lerpStepRef.current = currentStep;
+    } else {
+      // Tính khoảng cách vật lý của đoạn đang đi
+      const fromIdx = Math.max(0, Math.min(waypoints.length - 1, Math.floor(lerpStepRef.current)));
+      const toIdx = Math.max(0, Math.min(waypoints.length - 1, Math.ceil(lerpStepRef.current)));
+      const actualTo = toIdx === fromIdx ? Math.min(waypoints.length - 1, fromIdx + 1) : toIdx;
+      const dx = waypoints[actualTo].pos.x - waypoints[fromIdx].pos.x;
+      const dz = waypoints[actualTo].pos.z - waypoints[fromIdx].pos.z;
+      const segDist = Math.sqrt(dx * dx + dz * dz);
+
+      // Bước tiến = tốc độ cố định / khoảng cách đoạn → tốc độ vật lý đều
+      const stepRate = segDist > 0.1 ? WALK_SPEED / segDist : WALK_SPEED;
+      lerpStepRef.current += Math.sign(stepDiff) * Math.min(Math.abs(stepDiff), stepRate * delta);
+    }
+
     const ls = lerpStepRef.current;
     const loIdx = Math.max(0, Math.min(waypoints.length - 1, Math.floor(ls)));
     const hiIdx = Math.max(0, Math.min(waypoints.length - 1, Math.ceil(ls)));
@@ -1185,13 +1205,47 @@ function FirstPersonCamera({
 
     const lp = lookAtPos.current;
     if (ls >= waypoints.length - 2.2) lp.lerp(finalLookAt, 0.4);
-    else if (loIdx !== hiIdx) lp.set(waypoints[hiIdx].pos.x, 3.5, waypoints[hiIdx].pos.z);
-    else if (hiIdx + 1 < waypoints.length) lp.set(waypoints[hiIdx + 1].pos.x, 3.5, waypoints[hiIdx + 1].pos.z);
-    else lp.copy(finalLookAt);
+    else {
+      let dirX: number, dirZ: number;
+
+      if (loIdx === hiIdx) {
+        // Đứng tại waypoint → nhìn theo hướng đoạn tiếp theo
+        const nextIdx = Math.min(waypoints.length - 1, hiIdx + 1);
+        dirX = waypoints[nextIdx].pos.x - waypoints[hiIdx].pos.x;
+        dirZ = waypoints[nextIdx].pos.z - waypoints[hiIdx].pos.z;
+      } else if (t > 0.92 && hiIdx + 1 < waypoints.length) {
+        // Sắp đến khúc cua → quay sang hướng đoạn thẳng tiếp theo
+        dirX = waypoints[hiIdx + 1].pos.x - waypoints[hiIdx].pos.x;
+        dirZ = waypoints[hiIdx + 1].pos.z - waypoints[hiIdx].pos.z;
+      } else {
+        // Đang đi thẳng → nhìn thẳng theo hướng đoạn hiện tại
+        dirX = waypoints[hiIdx].pos.x - waypoints[loIdx].pos.x;
+        dirZ = waypoints[hiIdx].pos.z - waypoints[loIdx].pos.z;
+      }
+
+      const dirLen = Math.sqrt(dirX * dirX + dirZ * dirZ);
+      if (dirLen > 0.01) {
+        // Đặt điểm nhìn xa phía trước theo hướng đi thẳng
+        const targetX = tp.x + (dirX / dirLen) * 15;
+        const targetZ = tp.z + (dirZ / dirLen) * 15;
+        lp.x += (targetX - lp.x) * 0.1;
+        lp.y = 3.5;
+        lp.z += (targetZ - lp.z) * 0.1;
+      }
+    }
 
     if (ls >= waypoints.length - 1 - 0.05) lp.copy(finalLookAt);
 
-    camera.position.lerp(tp, 0.07);
+    // Zoom nhanh từ overview xuống bước 1, bám sát tp khi đi bộ
+    const moveDist = camera.position.distanceTo(tp);
+    if (moveDist > 5) {
+      // Zoom nhanh từ góc nhìn tổng quát xuống
+      camera.position.lerp(tp, 0.07);
+    } else {
+      // Bám sát tp — tốc độ cố định đã được xử lý ở step interpolation
+      camera.position.lerp(tp, 0.4);
+    }
+
     const savedQuat = camera.quaternion.clone();
     camera.lookAt(lp);
     targetQuat.current.copy(camera.quaternion);
