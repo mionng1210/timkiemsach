@@ -377,34 +377,40 @@ export async function updateShelf(id: number, data: Partial<ShelfRow>): Promise<
     const deweyStartVal = (data.deweyStart !== undefined && data.deweyStart !== null && !isNaN(Number(data.deweyStart))) ? Number(data.deweyStart) : undefined;
     const deweyEndVal = (data.deweyEnd !== undefined && data.deweyEnd !== null && !isNaN(Number(data.deweyEnd))) ? Number(data.deweyEnd) : undefined;
 
-    // Lấy thông tin về campus, rack
+    // Lấy thông tin về campus, rack và nhãn đang hiển thị của kệ
     const infoRes = await pool.query(
-      'SELECT campus_id as "campusId", rack_number as "rackNumber" FROM shelves WHERE id = $1',
+      'SELECT campus_id as "campusId", rack_number as "rackNumber", letter FROM shelves WHERE id = $1',
       [id]
     );
     if (infoRes.rows.length === 0) return false;
-    const { campusId, rackNumber } = infoRes.rows[0];
+    const { campusId, rackNumber, letter } = infoRes.rows[0];
+    const currentLetter = String(letter || '').trim().toLowerCase();
+    if (!currentLetter) return false;
 
-    // Cập nhật dải Dewey trên kệ active hiện tại (cập nhật cả dải gốc)
+    // Dewey được recalculate theo nhãn đang hiển thị, nên cập nhật nguồn gốc của nhãn đó.
     const fields: string[] = [];
     const values: any[] = [];
     let i = 1;
 
     if (deweyStartVal !== undefined) {
-      fields.push(`dewey_start = $${i}, original_dewey_start = $${i}`);
+      fields.push(`original_dewey_start = $${i}`);
       i++;
       values.push(deweyStartVal);
     }
     if (deweyEndVal !== undefined) {
-      fields.push(`dewey_end = $${i}, original_dewey_end = $${i}`);
+      fields.push(`original_dewey_end = $${i}`);
       i++;
       values.push(deweyEndVal);
     }
 
     if (fields.length > 0) {
-      values.push(id);
+      values.push(campusId, rackNumber, currentLetter);
       await pool.query(`
-        UPDATE shelves SET ${fields.join(', ')} WHERE id = $${i}
+        UPDATE shelves
+        SET ${fields.join(', ')}
+        WHERE campus_id = $${i}
+          AND rack_number = $${i + 1}
+          AND LOWER(TRIM(original_letter)) = $${i + 2}
       `, values);
     }
 
@@ -426,8 +432,8 @@ export async function deleteShelf(id: number): Promise<boolean> {
     await pool.query(`
       UPDATE shelves 
       SET is_deleted = TRUE, 
-          original_dewey_start = dewey_start, 
-          original_dewey_end = dewey_end 
+          original_dewey_start = COALESCE(original_dewey_start, dewey_start), 
+          original_dewey_end = COALESCE(original_dewey_end, dewey_end) 
       WHERE id = $1
     `, [id]);
 
@@ -451,8 +457,8 @@ export async function deleteBay(campusName: string, rackNumber: number, bay: num
     await pool.query(`
       UPDATE shelves 
       SET is_deleted = TRUE,
-          original_dewey_start = dewey_start,
-          original_dewey_end = dewey_end
+          original_dewey_start = COALESCE(original_dewey_start, dewey_start),
+          original_dewey_end = COALESCE(original_dewey_end, dewey_end)
       WHERE campus_id = $1 AND rack_number = $2 AND bay = $3
     `, [campusId, rackNumber, bay]);
 
