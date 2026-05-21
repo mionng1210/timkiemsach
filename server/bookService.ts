@@ -177,6 +177,8 @@ export async function lookupShelf(campusName: string, rackNumber: number, bay: n
       FROM shelves s
       JOIN campuses c ON s.campus_id = c.id
       WHERE LOWER(c.name) = LOWER($1) AND s.rack_number = $2 AND s.bay = $3 AND s.face = $4
+      ORDER BY s.is_deleted ASC, s.hidden_at DESC NULLS LAST, s.id DESC
+      LIMIT 1
     `, [campusName, rackNumber, bay, face]);
 
     if (res.rows.length > 0) return res.rows[0];
@@ -211,12 +213,13 @@ export async function lookupShelfByCode(campusName: string, code: string) {
   }
 }
 
-async function getRackOriginalMaxBay(campusId: number, rackNumber: number, campusName: string): Promise<number> {
+async function getRackOriginalMaxBay(campusId: number, rackNumber: number, campusName: string, client?: pg.PoolClient): Promise<number> {
+  const db = client || pool;
   const isThuDuc = campusName.toLowerCase().includes('thu duc');
   if (isThuDuc) return 6; // Thu Duc is always 6 bays
 
   // Sai Gon: find maximum original_letter
-  const res = await pool.query(`
+  const res = await db.query(`
     SELECT original_letter 
     FROM shelves
     WHERE campus_id = $1 AND rack_number = $2 AND original_letter IS NOT NULL
@@ -255,17 +258,18 @@ function getPristineLetter(campusName: string, bay: number, face: number, maxBay
   }
 }
 
-export async function recalculateUShapeLabels(campusId: number, rackNumber: number): Promise<void> {
+export async function recalculateUShapeLabels(campusId: number, rackNumber: number, client?: pg.PoolClient): Promise<void> {
+  const db = client || pool;
   try {
     // Get campus name
-    const campusRes = await pool.query('SELECT name FROM campuses WHERE id = $1', [campusId]);
+    const campusRes = await db.query('SELECT name FROM campuses WHERE id = $1', [campusId]);
     if (campusRes.rows.length === 0) return;
     const campusName = campusRes.rows[0].name;
 
-    const currentMaxBay = await getRackOriginalMaxBay(campusId, rackNumber, campusName);
+    const currentMaxBay = await getRackOriginalMaxBay(campusId, rackNumber, campusName, client);
 
     // 1. Reset original_letter = NULL for dummy/seeded shelves that were never imported
-    await pool.query(`
+    await db.query(`
       UPDATE shelves 
       SET original_letter = NULL, original_code = NULL 
       WHERE campus_id = $1 AND rack_number = $2 AND code = '' AND (original_dewey_start = 0 OR original_dewey_start IS NULL)
@@ -273,7 +277,7 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
 
     // 2. Snapshot display dewey map TRƯỚC KHI thay đổi bất kỳ thứ gì
     //    Lấy từ các kệ ĐANG HIỂN THỊ (active, có code hợp lệ — không phải temp code)
-    const displayRes = await pool.query(`
+    const displayRes = await db.query(`
       SELECT LOWER(TRIM(letter)) as "letter",
              dewey_start as "deweyStart",
              dewey_end as "deweyEnd"
@@ -295,7 +299,7 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
 
     // 3. Fallback dewey map từ các kệ ĐÃ XÓA (dùng hidden_at để ưu tiên bản gần nhất)
     //    Chỉ lấy kệ đã từng được hiển thị (hidden_at IS NOT NULL — loại bỏ kệ seed chưa bao giờ bật)
-    const fallbackRes = await pool.query(`
+    const fallbackRes = await db.query(`
       SELECT DISTINCT ON (LOWER(TRIM(letter)))
              LOWER(TRIM(letter)) as "letter",
              original_dewey_start as "deweyStart",
@@ -318,7 +322,7 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
     }
 
     // 4. Self-healing: Ensure all shelves have correct original_letter matching physical coordinates
-    const allShelves = await pool.query(`
+    const allShelves = await db.query(`
       SELECT id, bay, face, dewey_start, dewey_end, original_letter
       FROM shelves 
       WHERE campus_id = $1 AND rack_number = $2 AND (original_letter IS NOT NULL OR is_deleted = FALSE)
@@ -327,7 +331,7 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
     for (const r of allShelves.rows) {
       const pristineLetter = getPristineLetter(campusName, r.bay, r.face, currentMaxBay);
       if (r.original_letter !== pristineLetter) {
-        await pool.query(`
+        await db.query(`
           UPDATE shelves 
           SET original_letter = $1::char(1), 
               original_code = rack_number::text || $1::text,
@@ -339,7 +343,7 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
     }
 
     // 5. Get all active shelves (kèm code và dewey hiện tại để phân biệt temp vs real)
-    const res = await pool.query(`
+    const res = await db.query(`
       SELECT id, bay, face, original_letter, code,
              dewey_start as "deweyStart", dewey_end as "deweyEnd"
       FROM shelves 
@@ -381,7 +385,7 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
 
     // Bước quan trọng: Tạm thời đổi mã code thành giá trị duy nhất (tạm thời) 
     // để tránh lỗi Unique Constraint khi cập nhật các mã chữ cái mới (ví dụ: a thành b, b thành a)
-    await pool.query(`
+    await db.query(`
       UPDATE shelves 
       SET code = 'T_' || id 
       WHERE campus_id = $1 AND rack_number = $2 AND is_deleted = FALSE
@@ -405,7 +409,7 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
           }
         }
 
-        await pool.query(`
+        await db.query(`
           UPDATE shelves 
           SET code = $1, letter = $2, dewey_start = $3, dewey_end = $4,
               original_code = $1, original_dewey_start = $3, original_dewey_end = $4,
@@ -429,7 +433,7 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
       if (dewey.deweyStart === 0 && dewey.deweyEnd === 0) continue; // Không cần lưu zero
 
       // Ưu tiên 1: tìm deleted shelf đã có letter trùng → chỉ cập nhật dewey
-      const matchRes = await pool.query(`
+      const matchRes = await db.query(`
         UPDATE shelves 
         SET original_dewey_start = $1, original_dewey_end = $2, dewey_start = $1, dewey_end = $2
         WHERE id = (
@@ -442,7 +446,7 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
 
       if (matchRes.rows.length === 0) {
         // Ưu tiên 2: dùng seed shelf (chưa từng bật, code rỗng) — an toàn, không ghi đè kệ đã xóa thật
-        await pool.query(`
+        await db.query(`
           UPDATE shelves 
           SET letter = $1, dewey_start = $2, dewey_end = $3,
               original_dewey_start = $2, original_dewey_end = $3,
@@ -462,16 +466,21 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
 }
 
 export async function updateShelf(id: number, data: Partial<ShelfRow>): Promise<boolean> {
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
     const deweyStartVal = (data.deweyStart !== undefined && data.deweyStart !== null && !isNaN(Number(data.deweyStart))) ? Number(data.deweyStart) : undefined;
     const deweyEndVal = (data.deweyEnd !== undefined && data.deweyEnd !== null && !isNaN(Number(data.deweyEnd))) ? Number(data.deweyEnd) : undefined;
 
     // Lấy thông tin campus, rack
-    const infoRes = await pool.query(
+    const infoRes = await client.query(
       'SELECT campus_id as "campusId", rack_number as "rackNumber" FROM shelves WHERE id = $1',
       [id]
     );
-    if (infoRes.rows.length === 0) return false;
+    if (infoRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return false;
+    }
     const { campusId, rackNumber } = infoRes.rows[0];
 
     // Cập nhật dewey trực tiếp trên kệ — recalculate sẽ snapshot giá trị này
@@ -493,27 +502,34 @@ export async function updateShelf(id: number, data: Partial<ShelfRow>): Promise<
 
     if (fields.length > 0) {
       values.push(id);
-      await pool.query(`
+      await client.query(`
         UPDATE shelves SET ${fields.join(', ')} WHERE id = $${i}
       `, values);
     }
 
     if (campusId && rackNumber) {
-      await recalculateUShapeLabels(campusId, rackNumber);
+      await recalculateUShapeLabels(campusId, rackNumber, client);
     }
+    
+    await client.query('COMMIT');
     return true;
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Error updating shelf:', err);
     return false;
+  } finally {
+    client.release();
   }
 }
 
 export async function deleteShelf(id: number): Promise<boolean> {
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
     // Lấy thông tin rack để recalculate trước khi xóa
-    const infoRes = await pool.query('SELECT campus_id, rack_number FROM shelves WHERE id = $1', [id]);
+    const infoRes = await client.query('SELECT campus_id, rack_number FROM shelves WHERE id = $1', [id]);
 
-    await pool.query(`
+    await client.query(`
       UPDATE shelves 
       SET is_deleted = TRUE,
           original_code = code,
@@ -525,22 +541,32 @@ export async function deleteShelf(id: number): Promise<boolean> {
 
     if (infoRes.rows.length > 0) {
       const { campus_id, rack_number } = infoRes.rows[0];
-      await recalculateUShapeLabels(campus_id, rack_number);
+      await recalculateUShapeLabels(campus_id, rack_number, client);
     }
+    
+    await client.query('COMMIT');
     return true;
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Error deleting shelf:', err);
     return false;
+  } finally {
+    client.release();
   }
 }
 
 export async function deleteBay(campusName: string, rackNumber: number, bay: number): Promise<boolean> {
+  const client = await pool.connect();
   try {
-    const campusRes = await pool.query('SELECT id FROM campuses WHERE LOWER(name) = LOWER($1)', [campusName]);
-    if (campusRes.rows.length === 0) return false;
+    await client.query('BEGIN');
+    const campusRes = await client.query('SELECT id FROM campuses WHERE LOWER(name) = LOWER($1)', [campusName]);
+    if (campusRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return false;
+    }
     const campusId = campusRes.rows[0].id;
 
-    await pool.query(`
+    await client.query(`
       UPDATE shelves 
       SET is_deleted = TRUE,
           original_code = code,
@@ -550,16 +576,22 @@ export async function deleteBay(campusName: string, rackNumber: number, bay: num
       WHERE campus_id = $1 AND rack_number = $2 AND bay = $3
     `, [campusId, rackNumber, bay]);
 
-    await recalculateUShapeLabels(campusId, rackNumber);
+    await recalculateUShapeLabels(campusId, rackNumber, client);
+    await client.query('COMMIT');
     return true;
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Error deleting bay:', err);
     return false;
+  } finally {
+    client.release();
   }
 }
 
 export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
     const { code, deweyStart, deweyEnd, campus, rackNumber, letter, bay, face, positionX, positionZ } = data;
     const campusNameStr = campus || '';
 
@@ -568,31 +600,36 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
     const cleanDeweyEnd = (deweyEnd === null || deweyEnd === undefined || isNaN(Number(deweyEnd))) ? 0.0 : Number(deweyEnd);
 
     // Lấy campus_id từ name
-    const campusRes = await pool.query('SELECT id FROM campuses WHERE LOWER(name) = LOWER($1)', [campusNameStr]);
-    if (campusRes.rows.length === 0) return false;
+    const campusRes = await client.query('SELECT id FROM campuses WHERE LOWER(name) = LOWER($1)', [campusNameStr]);
+    if (campusRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return false;
+    }
     const campusId = campusRes.rows[0].id;
 
-    const currentMaxBay = await getRackOriginalMaxBay(campusId, rackNumber as number, campusNameStr);
+    const currentMaxBay = await getRackOriginalMaxBay(campusId, rackNumber as number, campusNameStr, client);
     const maxBay = Math.max(currentMaxBay, bay as number);
 
     // Tìm kiếm vị trí kệ đã được "tạo sẵn" (pre-allocated) theo tọa độ/vị trí
-    const existingRes = await pool.query(
-      'SELECT id FROM shelves WHERE campus_id = $1 AND rack_number = $2 AND bay = $3 AND face = $4',
+    const existingRes = await client.query(
+      `SELECT id, code, hidden_at FROM shelves 
+       WHERE campus_id = $1 AND rack_number = $2 AND bay = $3 AND face = $4 
+       ORDER BY is_deleted ASC, hidden_at DESC NULLS LAST LIMIT 1`,
       [campusId, rackNumber, bay, face]
     );
 
     // Tạo một mã tạm thời duy nhất (tối đa 10 ký tự) để tránh xung đột Unique Constraint 
     // trước khi hàm recalculateUShapeLabels tính toán lại mã chuẩn
     const tempCode = `T_${Math.random().toString(36).substring(2, 9)}`;
+    const pristineLetter = getPristineLetter(campusNameStr, bay as number, face as number, maxBay);
 
-    if (existingRes.rows.length > 0) {
-      // Nếu vị trí này đã có (thường là kệ ẩn do script seedGrid tạo), ta chỉ việc "Bật" nó lên
+    if (existingRes.rows.length > 0 && (!existingRes.rows[0].code || existingRes.rows[0].code === '')) {
+      // Nếu là kệ ẩn do script seedGrid tạo (code rỗng, chưa có lịch sử dữ liệu thật), ta chỉ việc "Bật" nó lên
       const shelfId = existingRes.rows[0].id;
       const finalStart = cleanDeweyStart;
       const finalEnd = cleanDeweyEnd;
 
-      const pristineLetter = getPristineLetter(campusNameStr, bay as number, face as number, maxBay);
-      await pool.query(`
+      await client.query(`
         UPDATE shelves 
         SET code = $1, dewey_start = $2, dewey_end = $3, letter = $4, 
             position_x = $5, position_z = $6, is_deleted = FALSE,
@@ -602,22 +639,26 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
         WHERE id = $11
       `, [tempCode, finalStart, finalEnd, letter || 'A', positionX, positionZ, pristineLetter, `${rackNumber}${pristineLetter}`, finalStart, finalEnd, shelfId]);
     } else {
-      // Dự phòng: Nếu vì lý do nào đó vị trí này chưa có (chưa chạy seed), thì insert mới hoàn toàn
-      const pristineLetter = getPristineLetter(campusNameStr, bay as number, face as number, maxBay);
-      await pool.query(`
+      // Nếu vị trí này chưa có (chưa chạy seed), HOẶC vị trí này đã có kệ từng hoạt động (để bảo toàn lịch sử kệ cũ), 
+      // thì insert mới hoàn toàn một dòng kệ.
+      await client.query(`
         INSERT INTO shelves (code, dewey_start, dewey_end, campus_id, rack_number, letter, bay, face, position_x, position_z, is_deleted, original_letter, original_code, original_dewey_start, original_dewey_end)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE, $11, $12, $2, $3)
       `, [tempCode, cleanDeweyStart, cleanDeweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ, pristineLetter, `${rackNumber}${pristineLetter}`]);
     }
 
     if (campusId && rackNumber) {
-      await recalculateUShapeLabels(campusId, rackNumber as number);
+      await recalculateUShapeLabels(campusId, rackNumber as number, client);
     }
 
+    await client.query('COMMIT');
     return true;
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Error adding shelf:', err);
     return false;
+  } finally {
+    client.release();
   }
 }
 

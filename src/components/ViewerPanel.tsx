@@ -5,6 +5,15 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import BookshelfScene, { type PathWaypoint } from './BookshelfScene';
 import type { SearchResult, RackInfo, ShelfInfo } from '../types';
 
+const authFetch = (url: string, options: RequestInit = {}) => {
+  const token = localStorage.getItem('adminToken');
+  const headers = new Headers(options.headers || {});
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  return fetch(url, { ...options, headers });
+};
+
 interface ViewerPanelProps {
   selectedResult: SearchResult | null;
   campus: string;
@@ -192,7 +201,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         try {
           const lookupByCode = async (code: string) => {
             if (!code) return null;
-            const res = await fetch(`/api/admin/shelves/lookupByCode?campus=${encodeURIComponent(campus)}&code=${encodeURIComponent(code)}`);
+            const res = await authFetch(`/api/admin/shelves/lookupByCode?campus=${encodeURIComponent(campus)}&code=${encodeURIComponent(code)}`);
             if (!res.ok) return null;
             const data = await res.json();
             return data && !data.error ? data : null;
@@ -229,7 +238,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       return;
     }
     try {
-      const res = await fetch(`/api/admin/shelves/${id}`, {
+      const res = await authFetch(`/api/admin/shelves/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deweyStart, deweyEnd }),
@@ -290,7 +299,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       if (!code || !code.trim()) return; // Bỏ qua nếu mã dãy trống
       attemptCount++;
       try {
-        const res = await fetch(`/api/admin/shelves`, {
+        const res = await authFetch(`/api/admin/shelves`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -331,7 +340,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const handleDeleteShelf = async (id: number) => {
     if (!confirm('Bạn có chắc chắn muốn xóa kệ này?')) return;
     try {
-      const res = await fetch(`/api/admin/shelves/${id}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/admin/shelves/${id}`, { method: 'DELETE' });
       if (res.ok) {
         const res2 = await fetch(`/api/racks?campus=${encodeURIComponent(campus)}`);
         const data = await res2.json();
@@ -346,7 +355,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const handleDeleteBay = async (rackNumber: number, bay: number) => {
     if (!confirm(`Bạn có chắc chắn muốn xóa TOÀN BỘ dãy (bay) ${bay} của kệ ${rackNumber}?`)) return;
     try {
-      const res = await fetch(`/api/admin/racks/${rackNumber}/bays/${bay}?campus=${encodeURIComponent(campus)}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/admin/racks/${rackNumber}/bays/${bay}?campus=${encodeURIComponent(campus)}`, { method: 'DELETE' });
       if (res.ok) {
         const res2 = await fetch(`/api/racks?campus=${encodeURIComponent(campus)}`);
         const data = await res2.json();
@@ -504,6 +513,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
               if (isAdminMode) {
                 // Tắt admin mode: Đăng xuất luôn
                 localStorage.removeItem('isAdmin');
+                localStorage.removeItem('adminToken');
                 setIsLoggedIn(false);
                 setAdminSubMode(null);
               } else {
@@ -1091,7 +1101,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
                   return;
                 }
                 try {
-                  const res = await fetch('http://localhost:3001/api/login', {
+                  const res = await fetch('/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
@@ -1099,6 +1109,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
                   const data = await res.json();
                   if (data.success) {
                     localStorage.setItem('isAdmin', 'true');
+                    localStorage.setItem('adminToken', data.token);
                     setIsLoggedIn(true);
                     setIsAdminMode(true);
                     setAdminSubMode('menu');
