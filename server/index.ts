@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import jwt from 'jsonwebtoken';
 import { 
   searchByDewey, 
   searchByCode, 
@@ -35,7 +36,8 @@ app.post('/api/login', async (req, res) => {
   }
   const isValid = await loginAdmin(username, password);
   if (isValid) {
-    return res.json({ success: true, message: 'Đăng nhập thành công', username });
+    const token = jwt.sign({ username }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '1d' });
+    return res.json({ success: true, message: 'Đăng nhập thành công', username, token });
   } else {
     return res.status(401).json({ success: false, message: 'Sai tên đăng nhập hoặc mật khẩu' });
   }
@@ -82,6 +84,25 @@ app.get('/api/search', async (req, res) => {
 });
 
 // ===== Admin APIs =====
+
+// Middleware xác thực JWT
+const authenticateAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Unauthorized: Thiếu token' });
+    return;
+  }
+  const token = authHeader.split(' ')[1];
+  try {
+    jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+    next();
+  } catch (err) {
+    res.status(401).json({ error: 'Unauthorized: Token không hợp lệ' });
+    return;
+  }
+};
+
+app.use('/api/admin', authenticateAdmin);
 
 // Thêm mới kệ (có tùy chọn x, z)
 app.post('/api/admin/shelves', async (req, res) => {
