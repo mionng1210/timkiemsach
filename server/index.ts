@@ -11,7 +11,8 @@ import {
   addShelf,
   loginAdmin,
   lookupShelf,
-  lookupShelfByCode
+  lookupShelfByCode,
+  ensureShelfMetadataColumns
 } from './bookService.js';
 
 const app = express();
@@ -148,6 +149,8 @@ app.delete('/api/admin/racks/:rackNumber/bays/:bay', async (req, res) => {
   if (success) return res.json({ success: true });
   return res.status(500).json({ error: 'Failed to delete bay' });
 });
+
+await ensureShelfMetadataColumns();
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);

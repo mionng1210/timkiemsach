@@ -161,7 +161,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const [editingShelf, setEditingShelf] = useState<ShelfInfo | null>(null);
   const [prefilledDewey, setPrefilledDewey] = useState<{
     s1: string, e1: string, s2: string, e2: string, c1: string, c2: string
-  }>({ s1: '0.000', e1: '999.999', s2: '0.000', e2: '999.999', c1: '', c2: '' });
+  }>({ s1: '0.000', e1: '0.000', s2: '0.000', e2: '0.000', c1: '', c2: '' });
 
   const suggestedCodes = useMemo(() => {
     if (!addingShelfPos) return { code1: '', code2: '' };
@@ -175,12 +175,10 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     const currentPos = allBays.indexOf(bIdx) + 1;
 
     if (campus === 'Thu Duc') {
-      // Thủ Đức: Dạng Z-shape song song (mặt sau 1->N, mặt trước N+1->2N)
       const c2 = String.fromCharCode(96 + currentPos);
       const c1 = String.fromCharCode(96 + N + currentPos);
       return { code1: `${rNum}${c1}`, code2: `${rNum}${c2}` };
     } else {
-      // Sài Gòn: Bắt đầu từ mặt trước Bay 1 (c1)
       const c1 = String.fromCharCode(96 + currentPos);
       const c2 = String.fromCharCode(96 + (2 * N - currentPos + 1));
       return { code1: `${rNum}${c1}`, code2: `${rNum}${c2}` };
@@ -192,18 +190,22 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     if (addingShelfPos) {
       const fetchOldData = async () => {
         try {
-          // Tra cứu mặt trước (1) theo vị trí vật lý
-          const r1 = await fetch(`/api/admin/shelves/lookup?campus=${encodeURIComponent(campus)}&rackNumber=${formRackNumber}&bay=${formBay}&face=1`);
-          const d1 = await r1.json();
-          // Tra cứu mặt sau (2) theo vị trí vật lý
-          const r2 = await fetch(`/api/admin/shelves/lookup?campus=${encodeURIComponent(campus)}&rackNumber=${formRackNumber}&bay=${formBay}&face=2`);
-          const d2 = await r2.json();
+          const lookupByCode = async (code: string) => {
+            if (!code) return null;
+            const res = await fetch(`/api/admin/shelves/lookupByCode?campus=${encodeURIComponent(campus)}&code=${encodeURIComponent(code)}`);
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data && !data.error ? data : null;
+          };
+
+          const d1 = await lookupByCode(suggestedCodes.code1);
+          const d2 = await lookupByCode(suggestedCodes.code2);
 
           setPrefilledDewey({
             s1: (d1 && !d1.error && d1.deweyStart != null) ? Number(d1.deweyStart).toFixed(3) : '0.000',
-            e1: (d1 && !d1.error && d1.deweyEnd != null) ? Number(d1.deweyEnd).toFixed(3) : '999.999',
+            e1: (d1 && !d1.error && d1.deweyEnd != null) ? Number(d1.deweyEnd).toFixed(3) : '0.000',
             s2: (d2 && !d2.error && d2.deweyStart != null) ? Number(d2.deweyStart).toFixed(3) : '0.000',
-            e2: (d2 && !d2.error && d2.deweyEnd != null) ? Number(d2.deweyEnd).toFixed(3) : '999.999',
+            e2: (d2 && !d2.error && d2.deweyEnd != null) ? Number(d2.deweyEnd).toFixed(3) : '0.000',
             c1: suggestedCodes.code1,
             c2: suggestedCodes.code2
           });
@@ -794,25 +796,53 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
             />
           </div>
 
-          <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt trước (1)</div>
-          <div className="admin-form-group">
-            <label>Dewey Start:</label>
-            <input type="text" id="addDeweyStart1" key={`s1-${formRackNumber}-${formBay}-${prefilledDewey.s1}`} defaultValue={prefilledDewey.s1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
-          </div>
-          <div className="admin-form-group">
-            <label>Dewey End:</label>
-            <input type="text" id="addDeweyEnd1" key={`e1-${formRackNumber}-${formBay}-${prefilledDewey.e1}`} defaultValue={prefilledDewey.e1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
-          </div>
+          {campus === 'Thu Duc' ? (
+            <>
+              {/* Thu Đức (Z-shape): Face 2 (Mặt sau) có letter thấp hơn, hiển thị trước */}
+              <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#f59e0b', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt sau (2) - {suggestedCodes.code2.toUpperCase()}</div>
+              <div className="admin-form-group">
+                <label>Dewey Start:</label>
+                <input type="text" id="addDeweyStart2" key={`s2-${formRackNumber}-${formBay}-${prefilledDewey.s2}`} defaultValue={prefilledDewey.s2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+              </div>
+              <div className="admin-form-group">
+                <label>Dewey End:</label>
+                <input type="text" id="addDeweyEnd2" key={`e2-${formRackNumber}-${formBay}-${prefilledDewey.e2}`} defaultValue={prefilledDewey.e2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+              </div>
 
-          <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt sau (2)</div>
-          <div className="admin-form-group">
-            <label>Dewey Start:</label>
-            <input type="text" id="addDeweyStart2" key={`s2-${formRackNumber}-${formBay}-${prefilledDewey.s2}`} defaultValue={prefilledDewey.s2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
-          </div>
-          <div className="admin-form-group">
-            <label>Dewey End:</label>
-            <input type="text" id="addDeweyEnd2" key={`e2-${formRackNumber}-${formBay}-${prefilledDewey.e2}`} defaultValue={prefilledDewey.e2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
-          </div>
+              <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#3b82f6', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt trước (1) - {suggestedCodes.code1.toUpperCase()}</div>
+              <div className="admin-form-group">
+                <label>Dewey Start:</label>
+                <input type="text" id="addDeweyStart1" key={`s1-${formRackNumber}-${formBay}-${prefilledDewey.s1}`} defaultValue={prefilledDewey.s1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+              </div>
+              <div className="admin-form-group">
+                <label>Dewey End:</label>
+                <input type="text" id="addDeweyEnd1" key={`e1-${formRackNumber}-${formBay}-${prefilledDewey.e1}`} defaultValue={prefilledDewey.e1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Sài Gòn (U-shape): Face 1 (Mặt trước) có letter thấp hơn, hiển thị trước */}
+              <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt trước (1) - {suggestedCodes.code1.toUpperCase()}</div>
+              <div className="admin-form-group">
+                <label>Dewey Start:</label>
+                <input type="text" id="addDeweyStart1" key={`s1-${formRackNumber}-${formBay}-${prefilledDewey.s1}`} defaultValue={prefilledDewey.s1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+              </div>
+              <div className="admin-form-group">
+                <label>Dewey End:</label>
+                <input type="text" id="addDeweyEnd1" key={`e1-${formRackNumber}-${formBay}-${prefilledDewey.e1}`} defaultValue={prefilledDewey.e1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+              </div>
+
+              <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt sau (2) - {suggestedCodes.code2.toUpperCase()}</div>
+              <div className="admin-form-group">
+                <label>Dewey Start:</label>
+                <input type="text" id="addDeweyStart2" key={`s2-${formRackNumber}-${formBay}-${prefilledDewey.s2}`} defaultValue={prefilledDewey.s2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+              </div>
+              <div className="admin-form-group">
+                <label>Dewey End:</label>
+                <input type="text" id="addDeweyEnd2" key={`e2-${formRackNumber}-${formBay}-${prefilledDewey.e2}`} defaultValue={prefilledDewey.e2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+              </div>
+            </>
+          )}
 
           <div className="admin-actions">
             <button className="admin-btn update" onClick={handleAddShelf}>
