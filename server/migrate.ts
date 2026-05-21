@@ -73,7 +73,8 @@ async function migrate() {
         original_letter CHAR(1),
         original_code VARCHAR(10),
         original_dewey_start DECIMAL(10, 3),
-        original_dewey_end DECIMAL(10, 3)
+        original_dewey_end DECIMAL(10, 3),
+        hidden_at TIMESTAMPTZ
       );
 
       -- Thêm cột nếu bảng đã tồn tại
@@ -81,6 +82,7 @@ async function migrate() {
       ALTER TABLE shelves ADD COLUMN IF NOT EXISTS original_code VARCHAR(10);
       ALTER TABLE shelves ADD COLUMN IF NOT EXISTS original_dewey_start DECIMAL(10, 3);
       ALTER TABLE shelves ADD COLUMN IF NOT EXISTS original_dewey_end DECIMAL(10, 3);
+      ALTER TABLE shelves ADD COLUMN IF NOT EXISTS hidden_at TIMESTAMPTZ;
 
       -- Chuyển Unique Constraint sang Partial Index để hỗ trợ soft-delete
       DO $$ 
