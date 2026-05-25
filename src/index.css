@@ -898,7 +898,7 @@ html, body, #root {
     bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 200;
+    z-index: 1999;
     padding: 12px 20px;
     background: linear-gradient(135deg, var(--accent), #7c3aed);
     color: white;
@@ -911,7 +911,7 @@ html, body, #root {
     font-family: var(--font);
     animation: fadeSlideIn 0.3s ease;
   }
-
+  
   .mobile-toggle-btn:active {
     transform: translateX(-50%) scale(0.95);
   }
@@ -956,7 +956,7 @@ html, body, #root {
   /* Info overlay → bottom sheet style */
   .viewer-info-overlay {
     top: auto;
-    bottom: 70px;
+    bottom: 90px;
     right: 12px;
     left: 12px;
   }
@@ -1871,18 +1871,18 @@ html, body, #root {
 
   .admin-back-btn {
     position: fixed !important;
-    top: auto !important;
-    bottom: 24px !important;
-    left: 16px !important;
-    right: 16px !important;
+    top: 100px !important;
+    bottom: auto !important;
+    left: 12px !important;
+    right: auto !important;
     z-index: 2005 !important;
     text-align: center;
-    padding: 14px !important;
-    font-size: 15px !important;
+    padding: 10px 16px !important;
+    font-size: 14px !important;
     font-weight: 600 !important;
     border-radius: 12px !important;
     background: rgba(17, 24, 39, 0.95) !important;
-    box-shadow: 0 -4px 20px rgba(0,0,0,0.3) !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
   }
 
   .admin-shelf-panel {

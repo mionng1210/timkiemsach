@@ -61,7 +61,6 @@ export default function Sidebar({ onResultSelect, selectedResult, campus, onCamp
             placeholder="Nhập ký hiệu Dewey (VD: 343.070) hoặc mã kệ (VD: 10a)..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            autoFocus
           />
         </div>
 

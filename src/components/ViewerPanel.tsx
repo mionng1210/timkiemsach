@@ -228,8 +228,21 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
 
   useEffect(() => {
     const isMenuOpen = isAdminMode && adminSubMode !== 'hidden' && adminSubMode !== null;
+    
+    // Toggle class on body to securely hide mobile toggle button via CSS
+    if (isMenuOpen) {
+      document.body.classList.add('admin-mode-active');
+    } else {
+      document.body.classList.remove('admin-mode-active');
+    }
+    
     const isEditingOrAdding = editingShelf !== null || addingShelfPos !== null;
     onEditingChange?.(isMenuOpen || isEditingOrAdding);
+
+    // Cleanup class on unmount
+    return () => {
+      document.body.classList.remove('admin-mode-active');
+    };
   }, [editingShelf, addingShelfPos, isAdminMode, adminSubMode, onEditingChange]);
 
   const handleUpdateDewey = async (id: number, deweyStart: number, deweyEnd: number) => {
@@ -676,6 +689,8 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         )}
       </Canvas>
 
+
+
       {/* Menu chọn chức năng Admin */}
       {isAdminMode && adminSubMode === 'menu' && (
         <div className="admin-menu-overlay">
@@ -865,7 +880,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </div>
       )}
 
-      {selectedResult && !isGuideMode && !isPathOverview && (
+      {selectedResult && !isGuideMode && !isPathOverview && !(isAdminMode && adminSubMode === 'manage') && !(isMobile && isAdminMode && adminSubMode === 'menu') && (
         <div className="viewer-info-overlay">
           <div className="info-card">
             <div className="info-card-header">
@@ -910,7 +925,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </div>
       )}
 
-      {selectedResult && !isGuideMode && !isPathOverview && (
+      {selectedResult && !isGuideMode && !isPathOverview && !(isAdminMode && adminSubMode === 'manage') && (
         <div className="bay-label-3d">
           <div className="bay-number">Kệ {shelf!.rackNumber}</div>
           <div className="bay-desc">
