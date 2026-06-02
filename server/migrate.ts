@@ -1,20 +1,14 @@
-import pg from 'pg';
 import dotenv from 'dotenv';
 import XLSX from 'xlsx';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
-import { recalculateUShapeLabels } from './bookService.js';
+import { recalculateUShapeLabels, pool } from './bookService.js';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const { Pool } = pg;
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
 
 function letterToBayFace(letter: string, maxLetter: string): { bay: number; face: number } {
   const idx = letter.toLowerCase().charCodeAt(0) - 97; // a=0, b=1, ...
@@ -46,55 +40,102 @@ async function migrate() {
 
     // 1. Create tables
     await client.query(`
-      CREATE TABLE IF NOT EXISTS campuses (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(255) UNIQUE NOT NULL
-      );
+      -- Create campuses table
+      IF OBJECT_ID('campuses', 'U') IS NULL
+      BEGIN
+        CREATE TABLE campuses (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          name VARCHAR(255) UNIQUE NOT NULL
+        );
+      END;
 
-      CREATE TABLE IF NOT EXISTS admins (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(255) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL
-      );
+      -- Create admins table
+      IF OBJECT_ID('admins', 'U') IS NULL
+      BEGIN
+        CREATE TABLE admins (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          username VARCHAR(255) UNIQUE NOT NULL,
+          password_hash VARCHAR(255) NOT NULL
+        );
+      END;
 
-      CREATE TABLE IF NOT EXISTS shelves (
-        id SERIAL PRIMARY KEY,
-        campus_id INTEGER REFERENCES campuses(id) ON DELETE CASCADE,
-        rack_number INTEGER NOT NULL,
-        letter CHAR(1) NOT NULL,
-        code VARCHAR(10) NOT NULL,
-        dewey_start DECIMAL(10, 3) NOT NULL,
-        dewey_end DECIMAL(10, 3) NOT NULL,
-        bay INTEGER NOT NULL,
-        face INTEGER NOT NULL,
-        position_x DECIMAL(10, 2),
-        position_z DECIMAL(10, 2),
-        is_deleted BOOLEAN DEFAULT FALSE,
-        original_letter CHAR(1),
-        original_code VARCHAR(10),
-        original_dewey_start DECIMAL(10, 3),
-        original_dewey_end DECIMAL(10, 3),
-        hidden_at TIMESTAMPTZ
-      );
+      -- Create shelves table
+      IF OBJECT_ID('shelves', 'U') IS NULL
+      BEGIN
+        CREATE TABLE shelves (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          campus_id INT FOREIGN KEY REFERENCES campuses(id) ON DELETE CASCADE,
+          rack_number INT NOT NULL,
+          letter CHAR(1) NOT NULL,
+          code VARCHAR(10) NOT NULL,
+          dewey_start DECIMAL(10, 3) NOT NULL,
+          dewey_end DECIMAL(10, 3) NOT NULL,
+          bay INT NOT NULL,
+          face INT NOT NULL,
+          position_x DECIMAL(10, 2),
+          position_z DECIMAL(10, 2),
+          is_deleted BIT DEFAULT 0,
+          original_letter CHAR(1),
+          original_code VARCHAR(10),
+          original_dewey_start DECIMAL(10, 3),
+          original_dewey_end DECIMAL(10, 3),
+          hidden_at DATETIMEOFFSET
+        );
+      END;
 
-      -- Thêm cột nếu bảng đã tồn tại
-      ALTER TABLE shelves ADD COLUMN IF NOT EXISTS original_letter CHAR(1);
-      ALTER TABLE shelves ADD COLUMN IF NOT EXISTS original_code VARCHAR(10);
-      ALTER TABLE shelves ADD COLUMN IF NOT EXISTS original_dewey_start DECIMAL(10, 3);
-      ALTER TABLE shelves ADD COLUMN IF NOT EXISTS original_dewey_end DECIMAL(10, 3);
-      ALTER TABLE shelves ADD COLUMN IF NOT EXISTS hidden_at TIMESTAMPTZ;
+      -- Thêm cột nếu bảng đã tồn tại nhưng thiếu
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('shelves') AND name = 'original_letter')
+      BEGIN
+        ALTER TABLE shelves ADD original_letter CHAR(1) NULL;
+      END;
 
-      -- Chuyển Unique Constraint sang Partial Index để hỗ trợ soft-delete
-      DO $$ 
-      BEGIN 
-        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'shelves_campus_id_code_key') THEN
-          ALTER TABLE shelves DROP CONSTRAINT shelves_campus_id_code_key;
-        END IF;
-      END $$;
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('shelves') AND name = 'original_code')
+      BEGIN
+        ALTER TABLE shelves ADD original_code VARCHAR(10) NULL;
+      END;
 
-      CREATE UNIQUE INDEX IF NOT EXISTS unique_active_shelf_idx ON shelves (campus_id, code) WHERE is_deleted = FALSE;
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('shelves') AND name = 'original_dewey_start')
+      BEGIN
+        ALTER TABLE shelves ADD original_dewey_start DECIMAL(10, 3) NULL;
+      END;
+
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('shelves') AND name = 'original_dewey_end')
+      BEGIN
+        ALTER TABLE shelves ADD original_dewey_end DECIMAL(10, 3) NULL;
+      END;
+
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('shelves') AND name = 'hidden_at')
+      BEGIN
+        ALTER TABLE shelves ADD hidden_at DATETIMEOFFSET NULL;
+      END;
+
+      -- Xóa constraint nếu tồn tại
+      IF EXISTS (SELECT * FROM sys.key_constraints WHERE name = 'shelves_campus_id_code_key')
+      BEGIN
+        ALTER TABLE shelves DROP CONSTRAINT shelves_campus_id_code_key;
+      END;
+
+      -- Tạo Filtered Index tương đương Partial Index của Postgres
+      IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'unique_active_shelf_idx' AND object_id = OBJECT_ID('shelves'))
+      BEGIN
+        CREATE UNIQUE INDEX unique_active_shelf_idx ON shelves (campus_id, code) WHERE is_deleted = 0;
+      END;
     `);
     console.log('✅ Tables created.');
+
+    // 1.5. Seed admin account if none exist
+    const adminCheck = await client.query('SELECT id FROM admins');
+    if (adminCheck.rows.length === 0) {
+      console.log('👤 Seeding default admin account...');
+      const adminUser = process.env.ADMIN_USERNAME || 'admin';
+      const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
+      const passwordHash = await bcrypt.hash(adminPass, 10);
+      await client.query(
+        'INSERT INTO admins (username, password_hash) VALUES ($1, $2)',
+        [adminUser, passwordHash]
+      );
+      console.log(`👤 Admin account seeded (username: ${adminUser}).`);
+    }
 
     const dataDir = path.resolve(__dirname, '..');
     const files = [
@@ -111,11 +152,14 @@ async function migrate() {
       const rows: any[] = XLSX.utils.sheet_to_json(sheet);
 
       // Insert campus
-      const campusRes = await client.query(
-        'INSERT INTO campuses (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
-        [campus]
-      );
-      const campusId = campusRes.rows[0].id;
+      let campusId: number;
+      const checkRes = await client.query('SELECT id FROM campuses WHERE name = $1', [campus]);
+      if (checkRes.rows.length > 0) {
+        campusId = checkRes.rows[0].id;
+      } else {
+        const insertRes = await client.query('INSERT INTO campuses (name) OUTPUT INSERTED.id VALUES ($1)', [campus]);
+        campusId = insertRes.rows[0].id;
+      }
 
       // RESET/BACKUP: Đặt lại toàn bộ kệ của cơ sở này về ẩn để khôi phục chuẩn
       console.log(`🔄 Performing full reset for ${campus} campus...`);
@@ -160,7 +204,7 @@ async function migrate() {
           // Kiểm tra xem kệ này đã tồn tại theo vị trí (rack, bay, face) chưa
           // Điều này giúp match với các kệ trống đã tạo bởi seedGrid
           const existingByPos = await client.query(
-            'SELECT id FROM shelves WHERE campus_id = $1 AND rack_number = $2 AND bay = $3 AND face = $4 LIMIT 1',
+            'SELECT TOP 1 id FROM shelves WHERE campus_id = $1 AND rack_number = $2 AND bay = $3 AND face = $4',
             [campusId, raw.rackNumber, bay, face]
           );
 
@@ -178,7 +222,7 @@ async function migrate() {
           } else {
             // Kiểm tra theo mã code cũ (nếu có)
             const existingByCode = await client.query(
-              'SELECT id FROM shelves WHERE campus_id = $1 AND code = $2 LIMIT 1',
+              'SELECT TOP 1 id FROM shelves WHERE campus_id = $1 AND code = $2',
               [campusId, raw.code]
             );
 

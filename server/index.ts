@@ -111,12 +111,12 @@ app.post('/api/admin/shelves', async (req, res) => {
   return res.status(500).json({ error: 'Failed to add shelf' });
 });
 
-// Cập nhật dải Dewey của 1 shelf
+// Cập nhật dải Dewey và màu sắc của 1 shelf
 app.put('/api/admin/shelves/:id', async (req, res) => {
   const id = parseInt(req.params.id);
-  const { deweyStart, deweyEnd } = req.body;
+  const { deweyStart, deweyEnd, color } = req.body;
   
-  const success = await updateShelf(id, { deweyStart, deweyEnd });
+  const success = await updateShelf(id, { deweyStart, deweyEnd, color });
   if (success) return res.json({ success: true });
   return res.status(500).json({ error: 'Failed to update shelf' });
 });

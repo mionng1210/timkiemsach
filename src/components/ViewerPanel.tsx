@@ -245,7 +245,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     };
   }, [editingShelf, addingShelfPos, isAdminMode, adminSubMode, onEditingChange]);
 
-  const handleUpdateDewey = async (id: number, deweyStart: number, deweyEnd: number) => {
+  const handleUpdateDewey = async (id: number, deweyStart: number, deweyEnd: number, color?: string) => {
     if (deweyStart > deweyEnd) {
       alert('Lỗi: Dewey Start phải nhỏ hơn hoặc bằng Dewey End!');
       return;
@@ -254,7 +254,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       const res = await authFetch(`/api/admin/shelves/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deweyStart, deweyEnd }),
+        body: JSON.stringify({ deweyStart, deweyEnd, color }),
       });
       if (res.ok) {
         // Refresh racks
@@ -751,12 +751,31 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
               id="deweyEnd"
             />
           </div>
+          
+          <div className="admin-form-group">
+            <label>Màu mặt kệ đầu dãy:</label>
+            <input
+              type="color"
+              defaultValue={editingShelf.color || '#ffe94a'}
+              id="shelfColor"
+              style={{
+                width: '100%',
+                height: '38px',
+                padding: '2px',
+                border: '1px solid var(--border)',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                backgroundColor: 'transparent'
+              }}
+            />
+          </div>
 
           <div className="admin-actions">
             <button className="admin-btn update" onClick={() => {
               const start = parseFloat((document.getElementById('deweyStart') as HTMLInputElement).value);
               const end = parseFloat((document.getElementById('deweyEnd') as HTMLInputElement).value);
-              handleUpdateDewey(editingShelf.shelfId, start, end);
+              const color = (document.getElementById('shelfColor') as HTMLInputElement).value;
+              handleUpdateDewey(editingShelf.shelfId, start, end, color);
             }}>
               Lưu thay đổi
             </button>

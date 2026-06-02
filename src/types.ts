@@ -12,6 +12,7 @@ export interface ShelfInfo {
   face: number;
   positionX?: number;
   positionZ?: number;
+  color?: string;
 }
 
 export interface RackInfo {
