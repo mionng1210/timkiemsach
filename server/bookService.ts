@@ -1,16 +1,114 @@
-import pg from 'pg';
+import sql from 'mssql';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 
 dotenv.config();
 
-const { Pool, types } = pg;
-// Parse PostgreSQL 'numeric' type (OID 1700) as float
-types.setTypeParser(1700, (val) => parseFloat(val));
+const config: sql.config = {
+  user: process.env.DB_USER || 'sa',
+  password: process.env.DB_PASSWORD,
+  server: process.env.DB_SERVER || 'localhost',
+  database: process.env.DB_DATABASE || 'timkiemsach',
+  port: parseInt(process.env.DB_PORT || '1433'),
+  options: {
+    encrypt: process.env.DB_ENCRYPT === 'true',
+    trustServerCertificate: process.env.DB_TRUST_SERVER_CERTIFICATE === 'true',
+  }
+};
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+const globalPool = new sql.ConnectionPool(config);
+const poolConnect = globalPool.connect().then(() => {
+  console.log('✅ Connected to SQL Server');
+}).catch((err) => {
+  console.error('❌ SQL Server connection failed:', err);
 });
+
+// Prepare query helper for translation from PG style to SQL Server style
+function prepareMssqlQuery(queryText: string, params: any[], request: sql.Request): string {
+  let mssqlQuery = queryText;
+  
+  // 1. Chuyển đổi $1, $2... -> @p1, @p2...
+  for (let i = 0; i < params.length; i++) {
+    const paramName = `p${i + 1}`;
+    mssqlQuery = mssqlQuery.replace(new RegExp(`\\$${i + 1}\\b`, 'g'), `@${paramName}`);
+    request.input(paramName, params[i]);
+  }
+  
+  // 2. Chuyển ILIKE -> LIKE
+  mssqlQuery = mssqlQuery.replace(/\bILIKE\b/gi, 'LIKE');
+  
+  // 3. Chuyển TRUE/FALSE -> 1/0 cho BIT columns trong so sánh
+  mssqlQuery = mssqlQuery.replace(/=\s*FALSE\b/gi, '= 0')
+                         .replace(/=\s*TRUE\b/gi, '= 1')
+                         .replace(/\bis_deleted\s+IS\s+FALSE\b/gi, 'is_deleted = 0')
+                         .replace(/\bis_deleted\s+IS\s+TRUE\b/gi, 'is_deleted = 1');
+                         
+  return mssqlQuery;
+}
+
+export class MSSQLClient {
+  private transaction: sql.Transaction;
+  private hasBegun = false;
+
+  constructor() {
+    this.transaction = new sql.Transaction(globalPool);
+  }
+
+  async query(text: string, params: any[] = []) {
+    const trimmed = text.trim().toUpperCase();
+    if (trimmed === 'BEGIN' || trimmed === 'COMMIT' || trimmed === 'ROLLBACK') {
+      if (trimmed === 'BEGIN') {
+        await this.transaction.begin();
+        this.hasBegun = true;
+      } else if (trimmed === 'COMMIT') {
+        await this.transaction.commit();
+        this.hasBegun = false;
+      } else if (trimmed === 'ROLLBACK') {
+        await this.transaction.rollback();
+        this.hasBegun = false;
+      }
+      return { rows: [] };
+    }
+
+    if (!this.hasBegun) {
+      const request = new sql.Request(globalPool);
+      const query = prepareMssqlQuery(text, params, request);
+      const res = await request.query(query);
+      return { rows: res.recordset || [] };
+    } else {
+      const request = new sql.Request(this.transaction);
+      const query = prepareMssqlQuery(text, params, request);
+      const res = await request.query(query);
+      return { rows: res.recordset || [] };
+    }
+  }
+
+  async connect() {
+    return this;
+  }
+
+  async release() {
+    // Tự động giải phóng bởi mssql
+  }
+}
+
+// Giả lập đối tượng pool của pg
+export const pool = {
+  connect: async () => {
+    await poolConnect;
+    return new MSSQLClient();
+  },
+  query: async (text: string, params: any[] = []) => {
+    await poolConnect;
+    const request = new sql.Request(globalPool);
+    const query = prepareMssqlQuery(text, params, request);
+    const res = await request.query(query);
+    return { rows: res.recordset || [] };
+  },
+  end: async () => {
+    await globalPool.close();
+  }
+};
 
 // ===== Types =====
 export interface ShelfRow {
@@ -25,6 +123,7 @@ export interface ShelfRow {
   face: number;         // Face 1 (trước) hoặc 2 (sau)
   positionX?: number;   // Tọa độ X tùy chỉnh
   positionZ?: number;   // Tọa độ Z tùy chỉnh
+  color?: string;       // Màu sắc mặt kệ đầu dãy
 }
 
 export interface RackInfo {
@@ -46,7 +145,16 @@ export interface SearchResult {
 
 export async function ensureShelfMetadataColumns(): Promise<void> {
   await pool.query(`
-    ALTER TABLE shelves ADD COLUMN IF NOT EXISTS hidden_at TIMESTAMPTZ
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('shelves') AND name = 'hidden_at')
+    BEGIN
+      ALTER TABLE shelves ADD hidden_at DATETIMEOFFSET NULL;
+    END
+  `);
+  await pool.query(`
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('shelves') AND name = 'color')
+    BEGIN
+      ALTER TABLE shelves ADD color VARCHAR(7) NULL;
+    END
   `);
 }
 
@@ -58,7 +166,7 @@ export async function getRackLayout(campus: string): Promise<RackInfo[]> {
     const res = await pool.query(`
       SELECT s.id as "shelfId", s.code, s.dewey_start as "deweyStart", s.dewey_end as "deweyEnd", 
              c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face,
-             s.position_x as "positionX", s.position_z as "positionZ"
+             s.position_x as "positionX", s.position_z as "positionZ", s.color as "color"
       FROM shelves s
       JOIN campuses c ON s.campus_id = c.id
       WHERE LOWER(c.name) = LOWER($1) AND s.is_deleted = FALSE
@@ -117,7 +225,7 @@ export async function searchByDewey(deweyNumber: number, campusName?: string): P
     let query = `
       SELECT s.id as "shelfId", s.code, s.dewey_start as "deweyStart", s.dewey_end as "deweyEnd", 
              c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face,
-             s.position_x as "positionX", s.position_z as "positionZ"
+             s.position_x as "positionX", s.position_z as "positionZ", s.color as "color"
       FROM shelves s
       JOIN campuses c ON s.campus_id = c.id
       WHERE $1 >= s.dewey_start AND $1 <= s.dewey_end AND s.is_deleted = FALSE
@@ -143,7 +251,7 @@ export async function searchByCode(code: string, campusName?: string): Promise<S
     let query = `
       SELECT s.id as "shelfId", s.code, s.dewey_start as "deweyStart", s.dewey_end as "deweyEnd", 
              c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face,
-             s.position_x as "positionX", s.position_z as "positionZ"
+             s.position_x as "positionX", s.position_z as "positionZ", s.color as "color"
       FROM shelves s
       JOIN campuses c ON s.campus_id = c.id
       WHERE s.code ILIKE $1 AND s.is_deleted = FALSE
@@ -169,16 +277,16 @@ export async function searchByCode(code: string, campusName?: string): Promise<S
 export async function lookupShelf(campusName: string, rackNumber: number, bay: number, face: number) {
   try {
     const res = await pool.query(`
-      SELECT s.id, 
+      SELECT TOP 1 s.id, 
              COALESCE(s.original_dewey_start, s.dewey_start) as "deweyStart", 
              COALESCE(s.original_dewey_end, s.dewey_end) as "deweyEnd", 
              COALESCE(s.original_code, s.code) as "code",
-             s.is_deleted as "isDeleted"
+             s.is_deleted as "isDeleted",
+             s.color as "color"
       FROM shelves s
       JOIN campuses c ON s.campus_id = c.id
       WHERE LOWER(c.name) = LOWER($1) AND s.rack_number = $2 AND s.bay = $3 AND s.face = $4
-      ORDER BY s.is_deleted ASC, s.hidden_at DESC NULLS LAST, s.id DESC
-      LIMIT 1
+      ORDER BY s.is_deleted ASC, s.hidden_at DESC, s.id DESC
     `, [campusName, rackNumber, bay, face]);
 
     if (res.rows.length > 0) return res.rows[0];
@@ -192,17 +300,17 @@ export async function lookupShelf(campusName: string, rackNumber: number, bay: n
 export async function lookupShelfByCode(campusName: string, code: string) {
   try {
     const res = await pool.query(`
-      SELECT s.id, 
+      SELECT TOP 1 s.id, 
              COALESCE(s.dewey_start, s.original_dewey_start) as "deweyStart", 
              COALESCE(s.dewey_end, s.original_dewey_end) as "deweyEnd", 
              COALESCE(s.original_code, s.code) as "code",
              s.is_deleted as "isDeleted",
-             s.hidden_at as "hiddenAt"
+             s.hidden_at as "hiddenAt",
+             s.color as "color"
       FROM shelves s
       JOIN campuses c ON s.campus_id = c.id
       WHERE LOWER(c.name) = LOWER($1) AND (LOWER(s.original_code) = LOWER($2) OR LOWER(s.code) = LOWER($2))
-      ORDER BY s.is_deleted DESC, s.hidden_at DESC NULLS LAST, s.id DESC
-      LIMIT 1
+      ORDER BY s.is_deleted DESC, s.hidden_at DESC, s.id DESC
     `, [campusName, code]);
 
     if (res.rows.length > 0) return res.rows[0];
@@ -213,7 +321,7 @@ export async function lookupShelfByCode(campusName: string, code: string) {
   }
 }
 
-async function getRackOriginalMaxBay(campusId: number, rackNumber: number, campusName: string, client?: pg.PoolClient): Promise<number> {
+async function getRackOriginalMaxBay(campusId: number, rackNumber: number, campusName: string, client?: MSSQLClient): Promise<number> {
   const db = client || pool;
   const isThuDuc = campusName.toLowerCase().includes('thu duc');
   if (isThuDuc) return 6; // Thu Duc is always 6 bays
@@ -258,7 +366,7 @@ function getPristineLetter(campusName: string, bay: number, face: number, maxBay
   }
 }
 
-export async function recalculateUShapeLabels(campusId: number, rackNumber: number, client?: pg.PoolClient): Promise<void> {
+export async function recalculateUShapeLabels(campusId: number, rackNumber: number, client?: MSSQLClient): Promise<void> {
   const db = client || pool;
   try {
     // Get campus name
@@ -278,13 +386,13 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
     // 2. Snapshot display dewey map TRƯỚC KHI thay đổi bất kỳ thứ gì
     //    Lấy từ các kệ ĐANG HIỂN THỊ (active, có code hợp lệ — không phải temp code)
     const displayRes = await db.query(`
-      SELECT LOWER(TRIM(letter)) as "letter",
+      SELECT LOWER(LTRIM(RTRIM(letter))) as "letter",
              dewey_start as "deweyStart",
              dewey_end as "deweyEnd"
       FROM shelves
       WHERE campus_id = $1 AND rack_number = $2 AND is_deleted = FALSE
         AND code NOT LIKE 'T_%'
-        AND letter IS NOT NULL AND TRIM(letter) != ''
+        AND letter IS NOT NULL AND LTRIM(RTRIM(letter)) != ''
     `, [campusId, rackNumber]);
 
     const displayDeweyMap = new Map<string, { deweyStart: number, deweyEnd: number }>();
@@ -300,15 +408,19 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
     // 3. Fallback dewey map từ các kệ ĐÃ XÓA (dùng hidden_at để ưu tiên bản gần nhất)
     //    Chỉ lấy kệ đã từng được hiển thị (hidden_at IS NOT NULL — loại bỏ kệ seed chưa bao giờ bật)
     const fallbackRes = await db.query(`
-      SELECT DISTINCT ON (LOWER(TRIM(letter)))
-             LOWER(TRIM(letter)) as "letter",
-             original_dewey_start as "deweyStart",
-             original_dewey_end as "deweyEnd"
-      FROM shelves
-      WHERE campus_id = $1 AND rack_number = $2 AND is_deleted = TRUE
-        AND hidden_at IS NOT NULL
-        AND letter IS NOT NULL AND TRIM(letter) != ''
-      ORDER BY LOWER(TRIM(letter)), hidden_at DESC NULLS LAST
+      WITH CTE AS (
+        SELECT LOWER(LTRIM(RTRIM(letter))) as "letter",
+               original_dewey_start as "deweyStart",
+               original_dewey_end as "deweyEnd",
+               ROW_NUMBER() OVER (PARTITION BY LOWER(LTRIM(RTRIM(letter))) ORDER BY hidden_at DESC) as rn
+        FROM shelves
+        WHERE campus_id = $1 AND rack_number = $2 AND is_deleted = TRUE
+          AND hidden_at IS NOT NULL
+          AND letter IS NOT NULL AND LTRIM(RTRIM(letter)) != ''
+      )
+      SELECT letter, deweyStart, deweyEnd
+      FROM CTE
+      WHERE rn = 1
     `, [campusId, rackNumber]);
 
     const fallbackDeweyMap = new Map<string, { deweyStart: number, deweyEnd: number }>();
@@ -333,8 +445,8 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
       if (r.original_letter !== pristineLetter) {
         await db.query(`
           UPDATE shelves 
-          SET original_letter = $1::char(1), 
-              original_code = rack_number::text || $1::text,
+          SET original_letter = CAST($1 AS CHAR(1)), 
+              original_code = CAST(rack_number AS VARCHAR(10)) + CAST($1 AS VARCHAR(10)),
               original_dewey_start = COALESCE(original_dewey_start, dewey_start, 0),
               original_dewey_end = COALESCE(original_dewey_end, dewey_end, 0)
           WHERE id = $2
@@ -350,16 +462,16 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
       WHERE campus_id = $1 AND rack_number = $2 AND is_deleted = FALSE
     `, [campusId, rackNumber]);
 
-    const shelves = res.rows;
+    const shelves: any[] = res.rows;
     if (shelves.length === 0) return;
 
     // Determine unique bays and map them to 1..N
-    const uniqueBays = [...new Set(shelves.map(s => s.bay))].sort((a, b) => a - b);
+    const uniqueBays = [...new Set(shelves.map((s: any) => s.bay))].sort((a: any, b: any) => a - b);
     const N = uniqueBays.length;
     const bayToIndex = new Map(uniqueBays.map((b, i) => [b, i + 1]));
 
     // Calculate charIdx for each shelf and sort the shelves by charIdx
-    const shelvesWithCharIdx = shelves.map(s => {
+    const shelvesWithCharIdx = shelves.map((s: any) => {
       const bayIdx = bayToIndex.get(s.bay) || 1;
       let charIdx = 0;
 
@@ -381,13 +493,13 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
         }
       }
       return { ...s, charIdx };
-    }).sort((a, b) => a.charIdx - b.charIdx);
+    }).sort((a: any, b: any) => a.charIdx - b.charIdx);
 
     // Bước quan trọng: Tạm thời đổi mã code thành giá trị duy nhất (tạm thời) 
     // để tránh lỗi Unique Constraint khi cập nhật các mã chữ cái mới (ví dụ: a thành b, b thành a)
     await db.query(`
       UPDATE shelves 
-      SET code = 'T_' || id 
+      SET code = 'T_' + CAST(id AS VARCHAR(10)) 
       WHERE campus_id = $1 AND rack_number = $2 AND is_deleted = FALSE
     `, [campusId, rackNumber]);
 
@@ -436,12 +548,13 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
       const matchRes = await db.query(`
         UPDATE shelves 
         SET original_dewey_start = $1, original_dewey_end = $2, dewey_start = $1, dewey_end = $2
+        OUTPUT INSERTED.id
         WHERE id = (
-          SELECT id FROM shelves 
+          SELECT TOP 1 id FROM shelves 
           WHERE campus_id = $3 AND rack_number = $4 AND is_deleted = TRUE AND hidden_at IS NOT NULL
-            AND LOWER(TRIM(letter)) = $5
-          ORDER BY hidden_at DESC NULLS LAST LIMIT 1
-        ) RETURNING id
+            AND LOWER(LTRIM(RTRIM(letter))) = $5
+          ORDER BY hidden_at DESC
+        )
       `, [dewey.deweyStart, dewey.deweyEnd, campusId, rackNumber, letter]);
 
       if (matchRes.rows.length === 0) {
@@ -450,12 +563,12 @@ export async function recalculateUShapeLabels(campusId: number, rackNumber: numb
           UPDATE shelves 
           SET letter = $1, dewey_start = $2, dewey_end = $3,
               original_dewey_start = $2, original_dewey_end = $3,
-              hidden_at = NOW()
+              hidden_at = GETDATE()
           WHERE id = (
-            SELECT id FROM shelves 
+            SELECT TOP 1 id FROM shelves 
             WHERE campus_id = $4 AND rack_number = $5 AND is_deleted = TRUE
               AND (code = '' OR code IS NULL) AND hidden_at IS NULL
-            ORDER BY id ASC LIMIT 1
+            ORDER BY id ASC
           )
         `, [letter.toUpperCase(), dewey.deweyStart, dewey.deweyEnd, campusId, rackNumber]);
       }
@@ -507,6 +620,15 @@ export async function updateShelf(id: number, data: Partial<ShelfRow>): Promise<
       `, values);
     }
 
+    if (data.color !== undefined) {
+      await client.query(`
+        UPDATE shelves 
+        SET color = $1 
+        WHERE campus_id = (SELECT campus_id FROM shelves WHERE id = $2) 
+          AND rack_number = (SELECT rack_number FROM shelves WHERE id = $2)
+      `, [data.color, id]);
+    }
+
     if (campusId && rackNumber) {
       await recalculateUShapeLabels(campusId, rackNumber, client);
     }
@@ -531,11 +653,11 @@ export async function deleteShelf(id: number): Promise<boolean> {
 
     await client.query(`
       UPDATE shelves 
-      SET is_deleted = TRUE,
+      SET is_deleted = 1,
           original_code = code,
           original_dewey_start = dewey_start,
           original_dewey_end = dewey_end,
-          hidden_at = NOW()
+          hidden_at = GETDATE()
       WHERE id = $1
     `, [id]);
 
@@ -568,11 +690,11 @@ export async function deleteBay(campusName: string, rackNumber: number, bay: num
 
     await client.query(`
       UPDATE shelves 
-      SET is_deleted = TRUE,
+      SET is_deleted = 1,
           original_code = code,
           original_dewey_start = dewey_start,
           original_dewey_end = dewey_end,
-          hidden_at = NOW()
+          hidden_at = GETDATE()
       WHERE campus_id = $1 AND rack_number = $2 AND bay = $3
     `, [campusId, rackNumber, bay]);
 
@@ -612,9 +734,9 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
 
     // Tìm kiếm vị trí kệ đã được "tạo sẵn" (pre-allocated) theo tọa độ/vị trí
     const existingRes = await client.query(
-      `SELECT id, code, hidden_at FROM shelves 
+      `SELECT TOP 1 id, code, hidden_at FROM shelves 
        WHERE campus_id = $1 AND rack_number = $2 AND bay = $3 AND face = $4 
-       ORDER BY is_deleted ASC, hidden_at DESC NULLS LAST LIMIT 1`,
+       ORDER BY is_deleted ASC, hidden_at DESC`,
       [campusId, rackNumber, bay, face]
     );
 
@@ -632,7 +754,7 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
       await client.query(`
         UPDATE shelves 
         SET code = $1, dewey_start = $2, dewey_end = $3, letter = $4, 
-            position_x = $5, position_z = $6, is_deleted = FALSE,
+            position_x = $5, position_z = $6, is_deleted = 0,
             hidden_at = NULL,
             original_letter = $7, original_code = $8,
             original_dewey_start = $9, original_dewey_end = $10
@@ -643,7 +765,7 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
       // thì insert mới hoàn toàn một dòng kệ.
       await client.query(`
         INSERT INTO shelves (code, dewey_start, dewey_end, campus_id, rack_number, letter, bay, face, position_x, position_z, is_deleted, original_letter, original_code, original_dewey_start, original_dewey_end)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE, $11, $12, $2, $3)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, $11, $12, $2, $3)
       `, [tempCode, cleanDeweyStart, cleanDeweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ, pristineLetter, `${rackNumber}${pristineLetter}`]);
     }
 

@@ -207,7 +207,21 @@ function Rack({
   isAdminMode?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
-  const mats = getRackMats(rackNumber);
+  const mats = useMemo(() => {
+    const dbColor = shelves.find(s => s.color)?.color;
+    if (dbColor) {
+      const colorObj = new THREE.Color(dbColor);
+      const hlColor = colorObj.clone().multiplyScalar(1.2);
+      const hoverColor = colorObj.clone().multiplyScalar(1.1);
+      return {
+        normal: new THREE.MeshLambertMaterial({ color: colorObj, emissive: colorObj, emissiveIntensity: 0.22 }),
+        hl: new THREE.MeshLambertMaterial({ color: hlColor, emissive: colorObj, emissiveIntensity: 0.65 }),
+        hover: new THREE.MeshLambertMaterial({ color: hoverColor, emissive: colorObj, emissiveIntensity: 0.35 }),
+      };
+    }
+    return getRackMats(rackNumber);
+  }, [shelves, rackNumber]);
+
   const mat = isHighlighted ? mats.hl : hovered ? mats.hover : mats.normal;
 
   const minBay = bays.length > 0 ? Math.min(...bays) : 1;
@@ -321,7 +335,7 @@ function AdminGrid({ onAddRackAt, visible, racks, campus }: { onAddRackAt?: (x: 
     });
     meshRef.current.instanceMatrix.needsUpdate = true;
     meshRef.current.computeBoundingSphere();
-  }, [instances]);
+  }, [instances, visible, meshRef.current]);
 
   useEffect(() => {
     if (visible && meshRef.current) meshRef.current.computeBoundingSphere();
@@ -658,7 +672,22 @@ export default function BookshelfScene({
         const rack = racks.find(r => r.rackNumber === cbay.rackNumber);
         const rackBays = rack?.shelves.map(s => s.bay).filter((v, idx, arr) => arr.indexOf(v) === idx).sort((a, b) => a - b) ?? [];
         const bayIdx = rackBays.indexOf(cbay.bay) + 1;
-        const mats = getRackMats(cbay.rackNumber);
+        
+        const dbColor = rack?.shelves.find(s => s.color)?.color;
+        let mats;
+        if (dbColor) {
+          const colorObj = new THREE.Color(dbColor);
+          const hlColor = colorObj.clone().multiplyScalar(1.2);
+          const hoverColor = colorObj.clone().multiplyScalar(1.1);
+          mats = {
+            normal: new THREE.MeshLambertMaterial({ color: colorObj, emissive: colorObj, emissiveIntensity: 0.22 }),
+            hl: new THREE.MeshLambertMaterial({ color: hlColor, emissive: colorObj, emissiveIntensity: 0.65 }),
+            hover: new THREE.MeshLambertMaterial({ color: hoverColor, emissive: colorObj, emissiveIntensity: 0.35 }),
+          };
+        } else {
+          mats = getRackMats(cbay.rackNumber);
+        }
+        
         const mat = (highlightRack === cbay.rackNumber && highlightBay === cbay.bay) ? mats.hl : mats.normal;
         return (
           <group key={`cbay-${cbay.rackNumber}-${cbay.bay}`} position={[cbay.positionX, 0, cbay.positionZ]}>

@@ -1,12 +1,7 @@
-import pg from 'pg';
 import dotenv from 'dotenv';
+import { pool } from './bookService.js';
 
 dotenv.config();
-
-const { Pool } = pg;
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
 
 async function seedGrid() {
   console.log('--- Bắt đầu tạo Grid Shelves ---');
@@ -51,7 +46,7 @@ async function seedGrid() {
               // Chưa có -> Tạo kệ ẩn (is_deleted = TRUE)
               await pool.query(`
                 INSERT INTO shelves (code, dewey_start, dewey_end, campus_id, rack_number, letter, bay, face, position_x, position_z, is_deleted)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1)
               `, [
                 '', // code trống
                 0,  // dewey_start
