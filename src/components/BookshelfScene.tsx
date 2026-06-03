@@ -98,17 +98,76 @@ function Bay({
   const displayCode1 = face1Shelf ? face1Shelf.code.toUpperCase() : `${rackNumber}${getLabel(activeIdx, 1)}`;
   const displayCode2 = face2Shelf ? face2Shelf.code.toUpperCase() : `${rackNumber}${getLabel(activeIdx, 2)}`;
 
-  // Kết hợp mảng các tầng bị ẩn của cả 2 mặt (nếu có 1 mặt bị ẩn thì sàn chung cũng ẩn)
-  const h1 = face1Shelf?.hiddenFloors || [];
-  const h2 = face2Shelf?.hiddenFloors || [];
-  const hiddenFloors = new Set([...h1, ...h2]);
+  // Kết hợp mảng các tầng bị ẩn: Tầng bị ẩn vật lý nếu nó ẩn ở ít nhất một mặt đang hoạt động
+  const hiddenFloors = useMemo(() => {
+    const set = new Set<number>();
+    for (let f = 1; f <= 9; f++) {
+      const isHidden1 = face1Shelf ? (face1Shelf.hiddenFloors || []).includes(f) : false;
+      const isHidden2 = face2Shelf ? (face2Shelf.hiddenFloors || []).includes(f) : false;
+      
+      const activeFacesCount = (face1Shelf ? 1 : 0) + (face2Shelf ? 1 : 0);
+      if (activeFacesCount === 0) {
+        set.add(f);
+      } else {
+        const shouldHide = (face1Shelf && isHidden1) || (face2Shelf && isHidden2);
+        if (shouldHide) {
+          set.add(f);
+        }
+      }
+    }
+    return set;
+  }, [face1Shelf, face2Shelf]);
+
+  // Tìm tầng cao nhất đang hoạt động cho khung vật lý chung (để render các cột gỗ dọc)
+  const maxActiveFloor = useMemo(() => {
+    let maxF = 0;
+    for (let f = 1; f <= 9; f++) {
+      if (!hiddenFloors.has(f)) {
+        maxF = f;
+      }
+    }
+    return maxF || 5; // Mặc định 5 tầng nếu không tìm thấy
+  }, [hiddenFloors]);
+
+  // Tìm tầng cao nhất hoạt động cho từng mặt riêng biệt (để định vị click zone và nhãn)
+  const maxActiveFloor1 = useMemo(() => {
+    if (!face1Shelf) return 0;
+    const hFloors = face1Shelf.hiddenFloors || [];
+    const hiddenSet = new Set(hFloors);
+    let maxF = 0;
+    for (let f = 1; f <= 9; f++) {
+      if (!hiddenSet.has(f)) maxF = f;
+    }
+    return maxF || 5;
+  }, [face1Shelf]);
+
+  const maxActiveFloor2 = useMemo(() => {
+    if (!face2Shelf) return 0;
+    const hFloors = face2Shelf.hiddenFloors || [];
+    const hiddenSet = new Set(hFloors);
+    let maxF = 0;
+    for (let f = 1; f <= 9; f++) {
+      if (!hiddenSet.has(f)) maxF = f;
+    }
+    return maxF || 5;
+  }, [face2Shelf]);
+
+  // Tạo danh sách ván sàn tương ứng dựa trên cấu trúc vật lý chung
+  const boards = useMemo(() => {
+    const arr = [0.1];
+    for (let f = 1; f <= maxActiveFloor; f++) {
+      arr.push(f);
+    }
+    return arr;
+  }, [maxActiveFloor]);
 
   return (
     <group position={[offsetX, 0, 0]}>
-      {/* Sides segmented into 5 pieces */}
-      {[0.5, 1.5, 2.5, 3.5, 4.5].map((y, i) => {
+      {/* Sides segmented into up to 9 pieces */}
+      {Array.from({ length: 9 }).map((_, i) => {
         const floorNum = i + 1;
         if (hiddenFloors.has(floorNum)) return null;
+        const y = floorNum - 0.5;
         return (
           <group key={`sides-${i}`}>
             <mesh geometry={sideSegmentGeo} material={activeIdx === 1 ? mat : woodMat} position={[0.13, y, -0.49]} />
@@ -117,20 +176,20 @@ function Bay({
         );
       })}
       
-      {/* Floors 1 to 6 */}
-      {[0.1, 1.0, 2.0, 3.0, 4.0, 5.0].map((y, i) => {
-        const k = i + 1; // Board number 1 to 6
-        const compBelow = k - 1; // Compartment below (1 to 5)
-        const compAbove = k;     // Compartment above (1 to 5)
+      {/* Floors (boards) */}
+      {boards.map((y, i) => {
+        const k = i + 1; // Board number 1 to (maxActiveFloor + 1)
+        const compBelow = k - 1; // Compartment below (1 to maxActiveFloor)
+        const compAbove = k;     // Compartment above (1 to maxActiveFloor)
         
         // Mặc định coi các tầng ngoài phạm vi là "đã ẩn" (không cần ván)
         let compBelowHidden = true;
-        if (compBelow >= 1 && compBelow <= 5) {
+        if (compBelow >= 1 && compBelow <= maxActiveFloor) {
           compBelowHidden = hiddenFloors.has(compBelow);
         }
         
         let compAboveHidden = true;
-        if (compAbove >= 1 && compAbove <= 5) {
+        if (compAbove >= 1 && compAbove <= maxActiveFloor) {
           compAboveHidden = hiddenFloors.has(compAbove);
         }
         
@@ -142,10 +201,11 @@ function Bay({
         );
       })}
 
-      {/* Dividers 1 to 5 */}
-      {[0.3, 1.3, 2.3, 3.3, 4.3].map((y, i) => {
+      {/* Dividers 1 to maxActiveFloor */}
+      {Array.from({ length: maxActiveFloor }).map((_, i) => {
         const floorNum = i + 1;
         if (hiddenFloors.has(floorNum)) return null;
+        const y = floorNum - 0.7;
         return (
           <mesh key={`divider-${i}`} geometry={dividerGeo} material={woodMat} position={[1.67, y, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
         );
@@ -153,7 +213,7 @@ function Bay({
 
       {/* Biển báo và Tem (Giữ nguyên vì Text không instance dễ dàng) */}
       {face1Shelf && (
-        <group position={[1.67, 5.0, 0.015]}>
+        <group position={[1.67, maxActiveFloor1, 0.015]}>
           <mesh position={[0, 0, 0]}>
             <planeGeometry args={[0.9, 0.5]} />
             <meshBasicMaterial color="#4f46e5" />
@@ -169,7 +229,7 @@ function Bay({
       )}
 
       {face2Shelf && (
-        <group position={[1.67, 5.0, -0.995]} rotation={[0, Math.PI, 0]}>
+        <group position={[1.67, maxActiveFloor2, -0.995]} rotation={[0, Math.PI, 0]}>
           <mesh position={[0, 0, 0]}>
             <planeGeometry args={[0.9, 0.5]} />
             <meshBasicMaterial color="#4f46e5" />
@@ -185,7 +245,7 @@ function Bay({
       )}
 
       {face1Shelf && (
-        <group position={[1.67, 2.05, 0.015]}>
+        <group position={[1.67, (maxActiveFloor1 / 2.0) - 0.45, 0.015]}>
           <mesh><planeGeometry args={[1.6, 0.3]} /><meshBasicMaterial color="#3498db" /></mesh>
           <mesh position={[0, 0, 0.005]}><planeGeometry args={[1.54, 0.24]} /><meshBasicMaterial color="white" /></mesh>
           <Text position={[0, 0, 0.01]} fontSize={0.13} color="#2c3e50" fontWeight="600" anchorX="center" anchorY="middle">
@@ -195,7 +255,7 @@ function Bay({
       )}
 
       {face2Shelf && (
-        <group position={[1.67, 2.05, -0.995]} rotation={[0, Math.PI, 0]}>
+        <group position={[1.67, (maxActiveFloor2 / 2.0) - 0.45, -0.995]} rotation={[0, Math.PI, 0]}>
           <mesh><planeGeometry args={[1.6, 0.3]} /><meshBasicMaterial color="#3498db" /></mesh>
           <mesh position={[0, 0, 0.005]}><planeGeometry args={[1.54, 0.24]} /><meshBasicMaterial color="white" /></mesh>
           <Text position={[0, 0, 0.01]} fontSize={0.13} color="#2c3e50" fontWeight="600" anchorX="center" anchorY="middle">
@@ -206,18 +266,22 @@ function Bay({
 
       {/* Click zones */}
       {(face1Shelf || isAdminMode) && (
-        <mesh geometry={clickGeo} material={clickMat} position={[1.65, 2.5, -0.1]}
+        <mesh material={clickMat} position={[1.65, maxActiveFloor1 / 2, -0.1]}
           onClick={(e) => { e.stopPropagation(); onBayClick?.(rackNumber, bayIndex, 1); }}
           onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
           onPointerOut={() => { document.body.style.cursor = 'default'; }}
-        />
+        >
+          <boxGeometry args={[3, maxActiveFloor1, 0.4]} />
+        </mesh>
       )}
       {(face2Shelf || isAdminMode) && (
-        <mesh geometry={clickGeo} material={clickMat} position={[1.65, 2.5, -0.88]}
+        <mesh material={clickMat} position={[1.65, maxActiveFloor2 / 2, -0.88]}
           onClick={(e) => { e.stopPropagation(); onBayClick?.(rackNumber, bayIndex, 2); }}
           onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
           onPointerOut={() => { document.body.style.cursor = 'default'; }}
-        />
+        >
+          <boxGeometry args={[3, maxActiveFloor2, 0.4]} />
+        </mesh>
       )}
     </group>
   );
@@ -263,6 +327,22 @@ function Rack({
   const labelXMin = (minBay - 1) * 3 + 0.05;
   const labelXMax = (maxBay - 1) * 3 + 3.25;
 
+  const maxRackActiveFloor = useMemo(() => {
+    let maxF = 0;
+    shelves.forEach(s => {
+      const hFloors = s.hiddenFloors || [];
+      const hiddenSet = new Set(hFloors);
+      for (let f = 1; f <= 9; f++) {
+        if (!hiddenSet.has(f)) {
+          if (f > maxF) maxF = f;
+        }
+      }
+    });
+    return maxF || 5;
+  }, [shelves]);
+
+  const labelY = maxRackActiveFloor - 0.5;
+
   return (
     <group
       onPointerOver={() => setHovered(true)}
@@ -273,13 +353,13 @@ function Rack({
       ))}
 
       {/* Nhãn số kệ */}
-      <group position={[labelXMin, 4.5, -0.5]} rotation={[0, -Math.PI / 2, 0]}>
+      <group position={[labelXMin, labelY, -0.5]} rotation={[0, -Math.PI / 2, 0]}>
         <mesh><circleGeometry args={[0.19, 32]} /><meshBasicMaterial color="#4f46e5" /></mesh>
         <mesh position={[0, 0, 0.005]}><circleGeometry args={[0.16, 32]} /><meshBasicMaterial color="#ffffff" /></mesh>
         <Text position={[0, 0, 0.01]} fontSize={0.16} color="#1e1b4b" fontWeight="800" anchorX="center" anchorY="middle">{`${rackNumber}`}</Text>
       </group>
 
-      <group position={[labelXMax, 4.5, -0.5]} rotation={[0, Math.PI / 2, 0]}>
+      <group position={[labelXMax, labelY, -0.5]} rotation={[0, Math.PI / 2, 0]}>
         <mesh><circleGeometry args={[0.19, 32]} /><meshBasicMaterial color="#4f46e5" /></mesh>
         <mesh position={[0, 0, 0.005]}><circleGeometry args={[0.16, 32]} /><meshBasicMaterial color="#ffffff" /></mesh>
         <Text position={[0, 0, 0.01]} fontSize={0.16} color="#1e1b4b" fontWeight="800" anchorX="center" anchorY="middle">{`${rackNumber}`}</Text>
@@ -512,22 +592,48 @@ export default function BookshelfScene({
     });
   }, [racks, campus]);
 
+  // Tìm kệ đang được highlight để tính chiều cao của nó
+  const highlightShelfHeight = useMemo(() => {
+    if (highlightRack === null || highlightBay === null || highlightFace === null) return 4.8;
+    
+    const targetShelf = racks.flatMap(r => r.shelves).find(s => 
+      s.rackNumber === highlightRack && s.bay === highlightBay && s.face === highlightFace
+    );
+    if (!targetShelf) return 4.8;
+
+    const hFloors = targetShelf.hiddenFloors || [];
+    const hiddenSet = new Set(hFloors);
+    let maxF = 0;
+    for (let f = 1; f <= 9; f++) {
+      if (!hiddenSet.has(f)) {
+        if (f > maxF) maxF = f;
+      }
+    }
+    const finalMaxF = maxF || 5;
+    // Chiều cao highlight box nên ngắn hơn chiều cao tổng một chút (giống 4.8 so với 5.0)
+    return finalMaxF - 0.2;
+  }, [highlightRack, highlightBay, highlightFace, racks]);
+
   const markerPos = useMemo(() => {
     if (highlightRack === null || highlightBay === null || highlightFace === null) return null;
+
+    // Chiều cao và tọa độ Y của marker tương ứng với maxActiveFloor
+    const h = highlightShelfHeight + 0.2; // Làm tròn lại chiều cao thực tế
+    const yVal = h / 2.0;
 
     // Check custom shelves first
     const customShelf = customShelves.find(s => s.rackNumber === highlightRack && s.bay === highlightBay && s.face === highlightFace);
     if (customShelf) {
       const faceLocalZ = highlightFace === 1 ? 0.0 : -0.98;
-      return new THREE.Vector3(customShelf.positionX! + 1.65, 2.5, customShelf.positionZ! + faceLocalZ);
+      return new THREE.Vector3(customShelf.positionX! + 1.65, yVal, customShelf.positionZ! + faceLocalZ);
     }
 
     const rp = rackPositions.find((r) => r.rackNumber === highlightRack);
     if (!rp) return null;
     const bayLocalX = (highlightBay - 1) * 3 + 1.65;
     const faceLocalZ = highlightFace === 1 ? 0.0 : -0.98;
-    return new THREE.Vector3(rp.x + bayLocalX, 2.5, rp.z + faceLocalZ);
-  }, [highlightRack, highlightBay, highlightFace, rackPositions, customShelves, campus]);
+    return new THREE.Vector3(rp.x + bayLocalX, yVal, rp.z + faceLocalZ);
+  }, [highlightRack, highlightBay, highlightFace, rackPositions, customShelves, campus, highlightShelfHeight]);
 
   const features = useMemo(() => {
     if (campus !== 'Sai Gon' && campus !== 'Thu Duc') return null;
@@ -723,13 +829,28 @@ export default function BookshelfScene({
         }
         
         const mat = (highlightRack === cbay.rackNumber && highlightBay === cbay.bay) ? mats.hl : mats.normal;
+        const maxCbayActiveFloor = (() => {
+          let maxF = 0;
+          cbay.shelves.forEach(s => {
+            const hFloors = s.hiddenFloors || [];
+            const hiddenSet = new Set(hFloors);
+            for (let f = 1; f <= 9; f++) {
+              if (!hiddenSet.has(f)) {
+                if (f > maxF) maxF = f;
+              }
+            }
+          });
+          return maxF || 5;
+        })();
+        const cbayLabelY = maxCbayActiveFloor - 0.5;
+
         return (
           <group key={`cbay-${cbay.rackNumber}-${cbay.bay}`} position={[cbay.positionX, 0, cbay.positionZ]}>
             <group position={[1.65, 0, -0.49]}>
               <group position={[-1.65, 0, 0.49]}>
                 <Bay bayIndex={cbay.bay} bayIdx={bayIdx || undefined} totalBays={rack?.bays.length || 1} mat={mat} rackNumber={cbay.rackNumber} shelves={cbay.shelves} campus={campus} isAdminMode={isAdminMode} onBayClick={onBayClick} overrideOffsetX={0} />
                 {bayIdx === 1 && (
-                  <group position={[0.05, 4.5, -0.5]} rotation={[0, -Math.PI / 2, 0]}>
+                  <group position={[0.05, cbayLabelY, -0.5]} rotation={[0, -Math.PI / 2, 0]}>
                     <mesh><circleGeometry args={[0.28, 32]} /><meshBasicMaterial color="#4f46e5" /></mesh>
                     <mesh position={[0, 0, 0.005]}><circleGeometry args={[0.24, 32]} /><meshBasicMaterial color="#ffffff" /></mesh>
                     <Text position={[0, 0, 0.01]} fontSize={0.24} color="#1e1b4b" fontWeight="800" anchorX="center" anchorY="middle">{`${cbay.rackNumber}`}</Text>
@@ -742,7 +863,7 @@ export default function BookshelfScene({
       })}
 
       <AdminGrid visible={!!isAdminMode} onAddRackAt={onAddRackAt} racks={racks} campus={campus} />
-      {markerPos && <HighlightMarker position={markerPos} />}
+      {markerPos && <HighlightMarker position={markerPos} height={highlightShelfHeight} />}
     </group>
   );
 }

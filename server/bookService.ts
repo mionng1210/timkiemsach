@@ -182,8 +182,8 @@ export async function getRackLayout(campus: string): Promise<RackInfo[]> {
     `, [campus]);
 
     const shelves: ShelfRow[] = res.rows.map(r => {
-      let hiddenFloors: number[] = [];
-      if (r.hiddenFloorsStr) {
+      let hiddenFloors: number[] = [6, 7, 8, 9];
+      if (r.hiddenFloorsStr !== null && r.hiddenFloorsStr !== undefined) {
         try { hiddenFloors = JSON.parse(r.hiddenFloorsStr); } catch(e) {}
       }
       return { ...r, hiddenFloors };
@@ -254,8 +254,8 @@ export async function searchByDewey(deweyNumber: number, campusName?: string): P
 
     const res = await pool.query(query, params);
     return res.rows.map(s => {
-      let hiddenFloors: number[] = [];
-      if (s.hiddenFloorsStr) {
+      let hiddenFloors: number[] = [6, 7, 8, 9];
+      if (s.hiddenFloorsStr !== null && s.hiddenFloorsStr !== undefined) {
         try { hiddenFloors = JSON.parse(s.hiddenFloorsStr); } catch(e) {}
       }
       return { shelf: { ...s, hiddenFloors }, campus: s.campus };
@@ -287,8 +287,8 @@ export async function searchByCode(code: string, campusName?: string): Promise<S
 
     const res = await pool.query(query, params);
     return res.rows.map(s => {
-      let hiddenFloors: number[] = [];
-      if (s.hiddenFloorsStr) {
+      let hiddenFloors: number[] = [6, 7, 8, 9];
+      if (s.hiddenFloorsStr !== null && s.hiddenFloorsStr !== undefined) {
         try { hiddenFloors = JSON.parse(s.hiddenFloorsStr); } catch(e) {}
       }
       return { shelf: { ...s, hiddenFloors }, campus: s.campus };
@@ -738,16 +738,16 @@ export async function deleteBay(campusName: string, rackNumber: number, bay: num
   }
 }
 
-// Toggle hide/show specific floor
 export async function toggleHiddenFloor(shelfId: number, floorNumber: number): Promise<boolean> {
   const client = await pool.connect();
   try {
-    const res = await client.query('SELECT hidden_floors FROM shelves WHERE id = $1', [shelfId]);
+    const res = await client.query('SELECT hidden_floors, campus_id, rack_number, bay FROM shelves WHERE id = $1', [shelfId]);
     if (res.rows.length === 0) return false;
 
-    let hiddenFloors: number[] = [];
+    const { campus_id, rack_number, bay } = res.rows[0];
+    let hiddenFloors: number[] = [6, 7, 8, 9];
     const hiddenStr = res.rows[0].hidden_floors;
-    if (hiddenStr) {
+    if (hiddenStr !== null && hiddenStr !== undefined) {
       try { hiddenFloors = JSON.parse(hiddenStr); } catch(e) {}
     }
 
@@ -759,7 +759,11 @@ export async function toggleHiddenFloor(shelfId: number, floorNumber: number): P
     }
 
     const newHiddenStr = JSON.stringify(hiddenFloors);
-    await client.query('UPDATE shelves SET hidden_floors = $1 WHERE id = $2', [newHiddenStr, shelfId]);
+    // Đồng bộ ẩn/hiện tầng cho cả 2 mặt của ngăn kệ
+    await client.query(
+      'UPDATE shelves SET hidden_floors = $1 WHERE campus_id = $2 AND rack_number = $3 AND bay = $4',
+      [newHiddenStr, campus_id, rack_number, bay]
+    );
     return true;
   } catch (err) {
     console.error('Error toggling hidden floor:', err);
@@ -769,11 +773,11 @@ export async function toggleHiddenFloor(shelfId: number, floorNumber: number): P
   }
 }
 
-export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
+export async function addShelf(data: Partial<ShelfRow> & { hiddenFloors?: number[] }): Promise<boolean> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { code, deweyStart, deweyEnd, campus, rackNumber, letter, bay, face, positionX, positionZ } = data;
+    const { code, deweyStart, deweyEnd, campus, rackNumber, letter, bay, face, positionX, positionZ, hiddenFloors } = data;
     const campusNameStr = campus || '';
 
     // Sanitization & Fallback to prevent NOT NULL constraint violation on dewey_start/dewey_end
@@ -804,6 +808,10 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
     const tempCode = `T_${Math.random().toString(36).substring(2, 9)}`;
     const pristineLetter = getPristineLetter(campusNameStr, bay as number, face as number, maxBay);
 
+    // Serialize hiddenFloors to string
+    const finalHiddenFloors = Array.isArray(hiddenFloors) ? hiddenFloors : [6, 7, 8, 9];
+    const hiddenFloorsStr = JSON.stringify(finalHiddenFloors);
+
     if (existingRes.rows.length > 0 && (!existingRes.rows[0].code || existingRes.rows[0].code === '')) {
       // Nếu là kệ ẩn do script seedGrid tạo (code rỗng, chưa có lịch sử dữ liệu thật), ta chỉ việc "Bật" nó lên
       const shelfId = existingRes.rows[0].id;
@@ -816,17 +824,24 @@ export async function addShelf(data: Partial<ShelfRow>): Promise<boolean> {
             position_x = $5, position_z = $6, is_deleted = 0,
             hidden_at = NULL,
             original_letter = $7, original_code = $8,
-            original_dewey_start = $9, original_dewey_end = $10
+            original_dewey_start = $9, original_dewey_end = $10,
+            hidden_floors = $12
         WHERE id = $11
-      `, [tempCode, finalStart, finalEnd, letter || 'A', positionX, positionZ, pristineLetter, `${rackNumber}${pristineLetter}`, finalStart, finalEnd, shelfId]);
+      `, [tempCode, finalStart, finalEnd, letter || 'A', positionX, positionZ, pristineLetter, `${rackNumber}${pristineLetter}`, finalStart, finalEnd, shelfId, hiddenFloorsStr]);
     } else {
       // Nếu vị trí này chưa có (chưa chạy seed), HOẶC vị trí này đã có kệ từng hoạt động (để bảo toàn lịch sử kệ cũ), 
       // thì insert mới hoàn toàn một dòng kệ.
       await client.query(`
-        INSERT INTO shelves (code, dewey_start, dewey_end, campus_id, rack_number, letter, bay, face, position_x, position_z, is_deleted, original_letter, original_code, original_dewey_start, original_dewey_end)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, $11, $12, $2, $3)
-      `, [tempCode, cleanDeweyStart, cleanDeweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ, pristineLetter, `${rackNumber}${pristineLetter}`]);
+        INSERT INTO shelves (code, dewey_start, dewey_end, campus_id, rack_number, letter, bay, face, position_x, position_z, is_deleted, original_letter, original_code, original_dewey_start, original_dewey_end, hidden_floors)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, $11, $12, $2, $3, $13)
+      `, [tempCode, cleanDeweyStart, cleanDeweyEnd, campusId, rackNumber, letter || 'A', bay, face, positionX, positionZ, pristineLetter, `${rackNumber}${pristineLetter}`, hiddenFloorsStr]);
     }
+
+    // Đồng bộ ẩn/hiện tầng cho cả 2 mặt của ngăn kệ
+    await client.query(
+      'UPDATE shelves SET hidden_floors = $1 WHERE campus_id = $2 AND rack_number = $3 AND bay = $4',
+      [hiddenFloorsStr, campusId, rackNumber, bay]
+    );
 
     if (campusId && rackNumber) {
       await recalculateUShapeLabels(campusId, rackNumber as number, client);
