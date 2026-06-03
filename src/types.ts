@@ -13,6 +13,7 @@ export interface ShelfInfo {
   positionX?: number;
   positionZ?: number;
   color?: string;
+  hiddenFloors?: number[];
 }
 
 export interface RackInfo {

@@ -6,12 +6,12 @@ dotenv.config();
 
 const config: sql.config = {
   user: process.env.DB_USER || 'sa',
-  password: process.env.DB_PASSWORD,
-  server: process.env.DB_SERVER || 'localhost',
+  password: process.env.DB_PASSWORD || '12345678aA',
+  server: process.env.DB_SERVER === 'localhost' ? '127.0.0.1' : (process.env.DB_SERVER || '127.0.0.1'),
   database: process.env.DB_DATABASE || 'timkiemsach',
   port: parseInt(process.env.DB_PORT || '1433'),
   options: {
-    encrypt: process.env.DB_ENCRYPT === 'true',
+    encrypt: process.env.DB_ENCRYPT === 'true' ? true : false,
     trustServerCertificate: process.env.DB_TRUST_SERVER_CERTIFICATE === 'true',
   }
 };
@@ -26,23 +26,23 @@ const poolConnect = globalPool.connect().then(() => {
 // Prepare query helper for translation from PG style to SQL Server style
 function prepareMssqlQuery(queryText: string, params: any[], request: sql.Request): string {
   let mssqlQuery = queryText;
-  
+
   // 1. Chuyển đổi $1, $2... -> @p1, @p2...
   for (let i = 0; i < params.length; i++) {
     const paramName = `p${i + 1}`;
     mssqlQuery = mssqlQuery.replace(new RegExp(`\\$${i + 1}\\b`, 'g'), `@${paramName}`);
     request.input(paramName, params[i]);
   }
-  
+
   // 2. Chuyển ILIKE -> LIKE
   mssqlQuery = mssqlQuery.replace(/\bILIKE\b/gi, 'LIKE');
-  
+
   // 3. Chuyển TRUE/FALSE -> 1/0 cho BIT columns trong so sánh
   mssqlQuery = mssqlQuery.replace(/=\s*FALSE\b/gi, '= 0')
-                         .replace(/=\s*TRUE\b/gi, '= 1')
-                         .replace(/\bis_deleted\s+IS\s+FALSE\b/gi, 'is_deleted = 0')
-                         .replace(/\bis_deleted\s+IS\s+TRUE\b/gi, 'is_deleted = 1');
-                         
+    .replace(/=\s*TRUE\b/gi, '= 1')
+    .replace(/\bis_deleted\s+IS\s+FALSE\b/gi, 'is_deleted = 0')
+    .replace(/\bis_deleted\s+IS\s+TRUE\b/gi, 'is_deleted = 1');
+
   return mssqlQuery;
 }
 
@@ -124,6 +124,7 @@ export interface ShelfRow {
   positionX?: number;   // Tọa độ X tùy chỉnh
   positionZ?: number;   // Tọa độ Z tùy chỉnh
   color?: string;       // Màu sắc mặt kệ đầu dãy
+  hiddenFloors?: number[]; // Mảng các tầng bị ẩn (ví dụ: [2, 4])
 }
 
 export interface RackInfo {
@@ -156,6 +157,12 @@ export async function ensureShelfMetadataColumns(): Promise<void> {
       ALTER TABLE shelves ADD color VARCHAR(7) NULL;
     END
   `);
+  await pool.query(`
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('shelves') AND name = 'hidden_floors')
+    BEGIN
+      ALTER TABLE shelves ADD hidden_floors VARCHAR(255) NULL;
+    END
+  `);
 }
 
 // ===== API Handlers =====
@@ -166,14 +173,21 @@ export async function getRackLayout(campus: string): Promise<RackInfo[]> {
     const res = await pool.query(`
       SELECT s.id as "shelfId", s.code, s.dewey_start as "deweyStart", s.dewey_end as "deweyEnd", 
              c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face,
-             s.position_x as "positionX", s.position_z as "positionZ", s.color as "color"
+             s.position_x as "positionX", s.position_z as "positionZ", s.color as "color",
+             s.hidden_floors as "hiddenFloorsStr"
       FROM shelves s
       JOIN campuses c ON s.campus_id = c.id
       WHERE LOWER(c.name) = LOWER($1) AND s.is_deleted = FALSE
       ORDER BY s.rack_number, s.letter
     `, [campus]);
 
-    const shelves: ShelfRow[] = res.rows;
+    const shelves: ShelfRow[] = res.rows.map(r => {
+      let hiddenFloors: number[] = [];
+      if (r.hiddenFloorsStr) {
+        try { hiddenFloors = JSON.parse(r.hiddenFloorsStr); } catch(e) {}
+      }
+      return { ...r, hiddenFloors };
+    });
     const rackMap = new Map<number, ShelfRow[]>();
 
     for (const s of shelves) {
@@ -225,7 +239,8 @@ export async function searchByDewey(deweyNumber: number, campusName?: string): P
     let query = `
       SELECT s.id as "shelfId", s.code, s.dewey_start as "deweyStart", s.dewey_end as "deweyEnd", 
              c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face,
-             s.position_x as "positionX", s.position_z as "positionZ", s.color as "color"
+             s.position_x as "positionX", s.position_z as "positionZ", s.color as "color",
+             s.hidden_floors as "hiddenFloorsStr"
       FROM shelves s
       JOIN campuses c ON s.campus_id = c.id
       WHERE $1 >= s.dewey_start AND $1 <= s.dewey_end AND s.is_deleted = FALSE
@@ -238,7 +253,13 @@ export async function searchByDewey(deweyNumber: number, campusName?: string): P
     }
 
     const res = await pool.query(query, params);
-    return res.rows.map(s => ({ shelf: s, campus: s.campus }));
+    return res.rows.map(s => {
+      let hiddenFloors: number[] = [];
+      if (s.hiddenFloorsStr) {
+        try { hiddenFloors = JSON.parse(s.hiddenFloorsStr); } catch(e) {}
+      }
+      return { shelf: { ...s, hiddenFloors }, campus: s.campus };
+    });
   } catch (err) {
     console.error('Error searching by dewey:', err);
     return [];
@@ -251,7 +272,8 @@ export async function searchByCode(code: string, campusName?: string): Promise<S
     let query = `
       SELECT s.id as "shelfId", s.code, s.dewey_start as "deweyStart", s.dewey_end as "deweyEnd", 
              c.name as campus, s.rack_number as "rackNumber", s.letter, s.bay, s.face,
-             s.position_x as "positionX", s.position_z as "positionZ", s.color as "color"
+             s.position_x as "positionX", s.position_z as "positionZ", s.color as "color",
+             s.hidden_floors as "hiddenFloorsStr"
       FROM shelves s
       JOIN campuses c ON s.campus_id = c.id
       WHERE s.code ILIKE $1 AND s.is_deleted = FALSE
@@ -264,7 +286,13 @@ export async function searchByCode(code: string, campusName?: string): Promise<S
     }
 
     const res = await pool.query(query, params);
-    return res.rows.map(s => ({ shelf: s, campus: s.campus }));
+    return res.rows.map(s => {
+      let hiddenFloors: number[] = [];
+      if (s.hiddenFloorsStr) {
+        try { hiddenFloors = JSON.parse(s.hiddenFloorsStr); } catch(e) {}
+      }
+      return { shelf: { ...s, hiddenFloors }, campus: s.campus };
+    });
   } catch (err) {
     console.error('Error searching by code:', err);
     return [];
@@ -632,7 +660,7 @@ export async function updateShelf(id: number, data: Partial<ShelfRow>): Promise<
     if (campusId && rackNumber) {
       await recalculateUShapeLabels(campusId, rackNumber, client);
     }
-    
+
     await client.query('COMMIT');
     return true;
   } catch (err) {
@@ -665,7 +693,7 @@ export async function deleteShelf(id: number): Promise<boolean> {
       const { campus_id, rack_number } = infoRes.rows[0];
       await recalculateUShapeLabels(campus_id, rack_number, client);
     }
-    
+
     await client.query('COMMIT');
     return true;
   } catch (err) {
@@ -704,6 +732,37 @@ export async function deleteBay(campusName: string, rackNumber: number, bay: num
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error deleting bay:', err);
+    return false;
+  } finally {
+    client.release();
+  }
+}
+
+// Toggle hide/show specific floor
+export async function toggleHiddenFloor(shelfId: number, floorNumber: number): Promise<boolean> {
+  const client = await pool.connect();
+  try {
+    const res = await client.query('SELECT hidden_floors FROM shelves WHERE id = $1', [shelfId]);
+    if (res.rows.length === 0) return false;
+
+    let hiddenFloors: number[] = [];
+    const hiddenStr = res.rows[0].hidden_floors;
+    if (hiddenStr) {
+      try { hiddenFloors = JSON.parse(hiddenStr); } catch(e) {}
+    }
+
+    const idx = hiddenFloors.indexOf(floorNumber);
+    if (idx >= 0) {
+      hiddenFloors.splice(idx, 1);
+    } else {
+      hiddenFloors.push(floorNumber);
+    }
+
+    const newHiddenStr = JSON.stringify(hiddenFloors);
+    await client.query('UPDATE shelves SET hidden_floors = $1 WHERE id = $2', [newHiddenStr, shelfId]);
+    return true;
+  } catch (err) {
+    console.error('Error toggling hidden floor:', err);
     return false;
   } finally {
     client.release();

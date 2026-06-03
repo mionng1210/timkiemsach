@@ -13,7 +13,8 @@ import {
   loginAdmin,
   lookupShelf,
   lookupShelfByCode,
-  ensureShelfMetadataColumns
+  ensureShelfMetadataColumns,
+  toggleHiddenFloor
 } from './bookService.js';
 
 const app = express();
@@ -119,6 +120,16 @@ app.put('/api/admin/shelves/:id', async (req, res) => {
   const success = await updateShelf(id, { deweyStart, deweyEnd, color });
   if (success) return res.json({ success: true });
   return res.status(500).json({ error: 'Failed to update shelf' });
+});
+
+// Bật/tắt ẩn một tầng của kệ
+app.post('/api/admin/shelves/:id/toggle-floor', async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { floor } = req.body;
+  if (!floor) return res.status(400).json({ error: 'floor is required' });
+  const success = await toggleHiddenFloor(id, floor);
+  if (success) return res.json({ success: true });
+  return res.status(500).json({ error: 'Failed to toggle hidden floor' });
 });
 
 // Tra cứu thông tin kệ (kể cả đã xóa) để lấy dữ liệu Dewey cũ
