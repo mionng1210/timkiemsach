@@ -268,6 +268,27 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
     }
   };
 
+  const handleToggleFloor = async (shelfId: number, floor: number) => {
+    try {
+      const res = await authFetch(`/api/admin/shelves/${shelfId}/toggle-floor`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ floor })
+      });
+      if (res.ok) {
+        const res2 = await fetch(`/api/racks?campus=${encodeURIComponent(campus)}`);
+        const data = await res2.json();
+        setRacks(data.racks || []);
+        
+        // Cập nhật lại editingShelf để UI phản hồi ngay
+        const updatedShelf = (data.racks || []).flatMap((r: any) => r.shelves).find((s: any) => s.shelfId === shelfId);
+        if (updatedShelf) setEditingShelf(updatedShelf);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleAddShelf = async () => {
     if (!addingShelfPos) return;
 
@@ -768,6 +789,35 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
                 backgroundColor: 'transparent'
               }}
             />
+          </div>
+
+          <div className="admin-form-group">
+            <label>Quản lý Tầng (Ẩn/Hiện Tầng Sách):</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '5px', marginTop: '5px' }}>
+              {[1, 2, 3, 4, 5].map(floorNum => {
+                const isHidden = editingShelf.hiddenFloors?.includes(floorNum);
+                return (
+                  <button 
+                    key={floorNum}
+                    onClick={() => handleToggleFloor(editingShelf.shelfId, floorNum)}
+                    style={{
+                      padding: '5px',
+                      fontSize: '12px',
+                      borderRadius: '4px',
+                      border: '1px solid var(--border)',
+                      backgroundColor: isHidden ? '#ef4444' : '#10b981',
+                      color: 'white',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Ngăn {floorNum}: {isHidden ? 'Đã Ẩn' : 'Hiện'}
+                  </button>
+                );
+              })}
+            </div>
+            <small style={{ display: 'block', marginTop: '5px', color: 'var(--text-secondary)' }}>
+              Lưu ý: Ẩn một ngăn ở mặt trước sẽ làm ẩn cùng ngăn đó ở mặt sau.
+            </small>
           </div>
 
           <div className="admin-actions">

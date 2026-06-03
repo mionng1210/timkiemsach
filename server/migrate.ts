@@ -164,7 +164,7 @@ async function migrate() {
       // RESET/BACKUP: Đặt lại toàn bộ kệ của cơ sở này về ẩn để khôi phục chuẩn
       console.log(`🔄 Performing full reset for ${campus} campus...`);
       await client.query(
-        'UPDATE shelves SET is_deleted = TRUE, dewey_start = 0, dewey_end = 0 WHERE campus_id = $1',
+        'UPDATE shelves SET is_deleted = 1, dewey_start = 0, dewey_end = 0 WHERE campus_id = $1',
         [campusId]
       );
 
@@ -213,7 +213,7 @@ async function migrate() {
             await client.query(
               `UPDATE shelves SET 
                 letter = $1, code = $2, dewey_start = $3, dewey_end = $4, 
-                position_x = $5, position_z = $6, is_deleted = FALSE,
+                position_x = $5, position_z = $6, is_deleted = 0,
                 original_letter = $1, original_code = $2,
                 original_dewey_start = $3, original_dewey_end = $4
                WHERE id = $7`,
@@ -230,7 +230,7 @@ async function migrate() {
               await client.query(
                 `UPDATE shelves SET 
                   rack_number = $1, letter = $2, code = $3, dewey_start = $4, dewey_end = $5, 
-                  bay = $6, face = $7, position_x = $8, position_z = $9, is_deleted = FALSE,
+                  bay = $6, face = $7, position_x = $8, position_z = $9, is_deleted = 0,
                   original_letter = $2, original_code = $3,
                   original_dewey_start = $4, original_dewey_end = $5
                  WHERE id = $10`,
@@ -240,7 +240,7 @@ async function migrate() {
               // Nếu chưa có bất kỳ cái nào -> Insert mới
               await client.query(
                 `INSERT INTO shelves (campus_id, rack_number, letter, code, dewey_start, dewey_end, bay, face, position_x, position_z, is_deleted, original_letter, original_code, original_dewey_start, original_dewey_end)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE, $3, $4, $5, $6)`,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, $3, $4, $5, $6)`,
                 [campusId, raw.rackNumber, raw.letter, raw.code, raw.deweyStart, raw.deweyEnd, bay, face, positionX, positionZ]
               );
             }

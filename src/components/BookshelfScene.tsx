@@ -25,7 +25,7 @@ interface BookshelfSceneProps {
 const ROW_SPACING_Z = 4.0;
 
 // Shared Geometries
-const sideGeo = new THREE.BoxGeometry(0.1, 5, 1);
+const sideSegmentGeo = new THREE.BoxGeometry(0.1, 1, 1);
 const floorGeo = new THREE.BoxGeometry(3, 0.1, 1);
 const dividerGeo = new THREE.BoxGeometry(3, 0.05, 0.5);
 // Vùng click ẩn cho mỗi mặt bay (trước/sau)
@@ -98,24 +98,58 @@ function Bay({
   const displayCode1 = face1Shelf ? face1Shelf.code.toUpperCase() : `${rackNumber}${getLabel(activeIdx, 1)}`;
   const displayCode2 = face2Shelf ? face2Shelf.code.toUpperCase() : `${rackNumber}${getLabel(activeIdx, 2)}`;
 
+  // Kết hợp mảng các tầng bị ẩn của cả 2 mặt (nếu có 1 mặt bị ẩn thì sàn chung cũng ẩn)
+  const h1 = face1Shelf?.hiddenFloors || [];
+  const h2 = face2Shelf?.hiddenFloors || [];
+  const hiddenFloors = new Set([...h1, ...h2]);
+
   return (
     <group position={[offsetX, 0, 0]}>
-      <mesh geometry={sideGeo} material={activeIdx === 1 ? mat : woodMat} position={[0.13, 2.5, -0.49]} />
-      <mesh geometry={sideGeo} material={woodMat} position={[3.17, 2.5, -0.49]} />
+      {/* Sides segmented into 5 pieces */}
+      {[0.5, 1.5, 2.5, 3.5, 4.5].map((y, i) => {
+        const floorNum = i + 1;
+        if (hiddenFloors.has(floorNum)) return null;
+        return (
+          <group key={`sides-${i}`}>
+            <mesh geometry={sideSegmentGeo} material={activeIdx === 1 ? mat : woodMat} position={[0.13, y, -0.49]} />
+            <mesh geometry={sideSegmentGeo} material={woodMat} position={[3.17, y, -0.49]} />
+          </group>
+        );
+      })}
       
-      <mesh geometry={floorGeo} material={woodMat} position={[1.67, 0.1, -0.49]} />
-      <mesh geometry={floorGeo} material={woodMat} position={[1.67, 1.0, -0.49]} />
-      <mesh geometry={floorGeo} material={woodMat} position={[1.67, 2.0, -0.49]} />
-      <mesh geometry={floorGeo} material={woodMat} position={[1.67, 3.0, -0.49]} />
-      <mesh geometry={floorGeo} material={woodMat} position={[1.67, 4.0, -0.49]} />
-      <mesh geometry={floorGeo} material={woodMat} position={[1.67, 5.0, -0.49]} />
+      {/* Floors 1 to 6 */}
+      {[0.1, 1.0, 2.0, 3.0, 4.0, 5.0].map((y, i) => {
+        const k = i + 1; // Board number 1 to 6
+        const compBelow = k - 1; // Compartment below (1 to 5)
+        const compAbove = k;     // Compartment above (1 to 5)
+        
+        // Mặc định coi các tầng ngoài phạm vi là "đã ẩn" (không cần ván)
+        let compBelowHidden = true;
+        if (compBelow >= 1 && compBelow <= 5) {
+          compBelowHidden = hiddenFloors.has(compBelow);
+        }
+        
+        let compAboveHidden = true;
+        if (compAbove >= 1 && compAbove <= 5) {
+          compAboveHidden = hiddenFloors.has(compAbove);
+        }
+        
+        // Một tấm ván chỉ bị ẩn khi CẢ HAI ngăn (trên và dưới nó) đều bị ẩn
+        if (compBelowHidden && compAboveHidden) return null;
 
-      <mesh geometry={dividerGeo} material={woodMat} position={[1.67, 0.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
-      <mesh geometry={dividerGeo} material={woodMat} position={[1.67, 1.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
-      <mesh geometry={dividerGeo} material={woodMat} position={[1.67, 2.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
-      <mesh geometry={dividerGeo} material={woodMat} position={[1.67, 3.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
-      <mesh geometry={dividerGeo} material={woodMat} position={[1.67, 4.3, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
+        return (
+          <mesh key={`floor-${k}`} geometry={floorGeo} material={woodMat} position={[1.67, y, -0.49]} />
+        );
+      })}
 
+      {/* Dividers 1 to 5 */}
+      {[0.3, 1.3, 2.3, 3.3, 4.3].map((y, i) => {
+        const floorNum = i + 1;
+        if (hiddenFloors.has(floorNum)) return null;
+        return (
+          <mesh key={`divider-${i}`} geometry={dividerGeo} material={woodMat} position={[1.67, y, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
+        );
+      })}
 
       {/* Biển báo và Tem (Giữ nguyên vì Text không instance dễ dàng) */}
       {face1Shelf && (
