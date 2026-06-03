@@ -41,12 +41,14 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
   const [addingShelfPos, setAddingShelfPos] = useState<{ x: number, z: number, rackNumber?: number, bay?: number, face?: number } | null>(null);
   const [formRackNumber, setFormRackNumber] = useState<number>(10);
   const [formBay, setFormBay] = useState<number>(1);
+  const [selectedFloors, setSelectedFloors] = useState<number[]>([]);
 
   // Update form states when addingShelfPos changes
   useEffect(() => {
     if (addingShelfPos) {
       setFormRackNumber(addingShelfPos.rackNumber ?? 10);
       setFormBay(addingShelfPos.bay ?? 1);
+      setSelectedFloors([]); // Reset selected floors when adding is initialized
     }
   }, [addingShelfPos]);
 
@@ -326,6 +328,10 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       return;
     }
 
+    // Calculate hidden floors
+    const active = selectedFloors.length === 0 ? [1, 2, 3, 4, 5] : selectedFloors;
+    const hiddenFloors = [1, 2, 3, 4, 5, 6, 7, 8, 9].filter(f => !active.includes(f));
+
     let successCount = 0;
     let attemptCount = 0;
 
@@ -338,7 +344,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             rackNumber, code, bay, face, deweyStart: dStart, deweyEnd: dEnd, campus,
-            positionX: addingShelfPos.x, positionZ: addingShelfPos.z
+            positionX: addingShelfPos.x, positionZ: addingShelfPos.z, hiddenFloors
           }),
         });
         if (res.ok) successCount++;
@@ -794,7 +800,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           <div className="admin-form-group">
             <label>Quản lý Tầng (Ẩn/Hiện Tầng Sách):</label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '5px', marginTop: '5px' }}>
-              {[1, 2, 3, 4, 5].map(floorNum => {
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(floorNum => {
                 const isHidden = editingShelf.hiddenFloors?.includes(floorNum);
                 return (
                   <button 
@@ -816,7 +822,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
               })}
             </div>
             <small style={{ display: 'block', marginTop: '5px', color: 'var(--text-secondary)' }}>
-              Lưu ý: Ẩn một ngăn ở mặt trước sẽ làm ẩn cùng ngăn đó ở mặt sau.
+              Lưu ý: Ngăn sách được ẩn độc lập cho mỗi mặt kệ.
             </small>
           </div>
 
@@ -888,6 +894,44 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
                 opacity: 1
               }}
             />
+          </div>
+
+          <div className="admin-form-group">
+            <label>Chọn các tầng muốn tạo (Mặc định: 1 đến 5):</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginTop: '6px' }}>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(f => {
+                const isSelected = selectedFloors.includes(f);
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => {
+                      if (isSelected) {
+                        setSelectedFloors(selectedFloors.filter(x => x !== f));
+                      } else {
+                        setSelectedFloors([...selectedFloors, f].sort((a, b) => a - b));
+                      }
+                    }}
+                    style={{
+                      padding: '8px 5px',
+                      fontSize: '12px',
+                      borderRadius: '4px',
+                      border: '1px solid var(--border)',
+                      backgroundColor: isSelected ? '#10b981' : 'rgba(255, 255, 255, 0.05)',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    T {f}
+                  </button>
+                );
+              })}
+            </div>
+            <small style={{ display: 'block', marginTop: '6px', color: 'var(--text-secondary)' }}>
+              Mẹo: Chọn các tầng mong muốn (vd: 1, 3, 4). Nếu không chọn tầng nào, hệ thống sẽ tạo đủ 5 tầng đầu tiên.
+            </small>
           </div>
 
           {campus === 'Thu Duc' ? (

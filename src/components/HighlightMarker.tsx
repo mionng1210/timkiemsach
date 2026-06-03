@@ -4,9 +4,10 @@ import * as THREE from 'three';
 
 interface HighlightMarkerProps {
   position: THREE.Vector3;
+  height?: number;
 }
 
-export default function HighlightMarker({ position }: HighlightMarkerProps) {
+export default function HighlightMarker({ position, height = 4.8 }: HighlightMarkerProps) {
   const boxRef = useRef<THREE.Mesh>(null);
   const arrowRef = useRef<THREE.Group>(null);
 
@@ -21,7 +22,7 @@ export default function HighlightMarker({ position }: HighlightMarkerProps) {
 
     // Bounce arrow up and down
     if (arrowRef.current) {
-      arrowRef.current.position.y = position.y + 3.2 + Math.sin(t * 3) * 0.3;
+      arrowRef.current.position.y = position.y + (height / 2.0) + 0.8 + Math.sin(t * 3) * 0.3;
       arrowRef.current.position.x = position.x;
       arrowRef.current.position.z = position.z;
     }
@@ -31,7 +32,7 @@ export default function HighlightMarker({ position }: HighlightMarkerProps) {
     <group>
       {/* Khối highlight bán trong suốt */}
       <mesh ref={boxRef} position={position}>
-        <boxGeometry args={[3.0, 4.8, 0.6]} />
+        <boxGeometry args={[3.0, height, 0.6]} />
         <meshStandardMaterial
           color="#4a7dff"
           transparent
@@ -45,7 +46,7 @@ export default function HighlightMarker({ position }: HighlightMarkerProps) {
 
       {/* Viền wireframe */}
       <mesh position={position}>
-        <boxGeometry args={[3.05, 4.85, 0.65]} />
+        <boxGeometry args={[3.05, height + 0.05, 0.65]} />
         <meshBasicMaterial color="#4a7dff" wireframe transparent opacity={0.5} />
       </mesh>
 
