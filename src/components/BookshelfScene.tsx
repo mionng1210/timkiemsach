@@ -1075,7 +1075,9 @@ export default function BookshelfScene({
       {(!isAdminMode || adminSubMode === 'add') && (
         <AdminGrid visible={!!isAdminMode} onAddRackAt={onAddRackAt} racks={racks} campus={campus} />
       )}
-      <FeatureGrid visible={!!isAdminMode && adminSubMode === 'features'} campus={campus} existingFeatures={customFeatures} onAddFeatureAt={onAddFeatureAt} isAdminMode={isAdminMode} adminSubMode={adminSubMode} onFeatureClick={onFeatureClick} rackPositions={rackPositions} />
+      {campus === 'Thu Duc' && (
+        <FeatureGrid visible={!!isAdminMode && adminSubMode === 'features'} campus={campus} existingFeatures={customFeatures} onAddFeatureAt={onAddFeatureAt} isAdminMode={isAdminMode} adminSubMode={adminSubMode} onFeatureClick={onFeatureClick} rackPositions={rackPositions} />
+      )}
       {markerPos && <HighlightMarker position={markerPos} height={highlightShelfHeight} />}
         </group>
       )}
