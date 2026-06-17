@@ -955,6 +955,20 @@ export async function initializeDatabase(): Promise<void> {
     await ensureShelfMetadataColumns();
 
     await pool.query(`
+      IF OBJECT_ID('custom_features', 'U') IS NULL
+      BEGIN
+        CREATE TABLE custom_features (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          campus_id INT FOREIGN KEY REFERENCES campuses(id) ON DELETE CASCADE,
+          type VARCHAR(50) NOT NULL,
+          pos_x DECIMAL(10, 2) NOT NULL,
+          pos_z DECIMAL(10, 2) NOT NULL,
+          length DECIMAL(10, 2) NOT NULL,
+          width DECIMAL(10, 2),
+          rotation DECIMAL(10, 2)
+        );
+      END;
+
       IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('shelves') AND name = 'original_letter')
       BEGIN
         ALTER TABLE shelves ADD original_letter CHAR(1) NULL;
@@ -1166,3 +1180,61 @@ export async function initializeDatabase(): Promise<void> {
   }
 }
 
+// ===== CUSTOM FEATURES =====
+export async function getCustomFeatures(campusName: string) {
+  try {
+    const res = await pool.query(`
+      SELECT f.* 
+      FROM custom_features f
+      JOIN campuses c ON f.campus_id = c.id
+      WHERE c.name = $1
+    `, [campusName]);
+    return res.rows;
+  } catch (err) {
+    console.error('getCustomFeatures error:', err);
+    return [];
+  }
+}
+
+export async function addCustomFeature(data: any) {
+  const { campus, type, posX, posZ, length, width, rotation } = data;
+  try {
+    const campusRes = await pool.query('SELECT id FROM campuses WHERE name = $1', [campus]);
+    if (campusRes.rows.length === 0) return false;
+    const campusId = campusRes.rows[0].id;
+
+    await pool.query(`
+      INSERT INTO custom_features (campus_id, type, pos_x, pos_z, length, width, rotation)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, [campusId, type, posX, posZ, length, width || 1.2, rotation || 0]);
+    return true;
+  } catch (err) {
+    console.error('addCustomFeature error:', err);
+    return false;
+  }
+}
+
+export async function updateCustomFeature(id: number, data: any) {
+  const { posX, posZ, length, width, rotation } = data;
+  try {
+    await pool.query(`
+      UPDATE custom_features
+      SET pos_x = $1, pos_z = $2, length = $3, width = $4, rotation = $5
+      WHERE id = $6
+    `, [posX, posZ, length, width || 1.2, rotation || 0, id]);
+    return true;
+  } catch (err) {
+    console.error('updateCustomFeature error:', err);
+    return false;
+  }
+}
+
+export async function deleteCustomFeature(id: number) {
+  try {
+    await pool.query('DELETE FROM custom_features WHERE id = $1', [id]);
+    return true;
+  } catch (err) {
+    console.error('deleteCustomFeature error:', err);
+    return false;
+  }
+}

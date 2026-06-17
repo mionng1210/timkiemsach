@@ -32,3 +32,14 @@ export interface CampusInfo {
   rackCount: number;
   shelfCount: number;
 }
+
+export interface CustomFeature {
+  id: number;
+  campus_id: number;
+  type: string;
+  pos_x: number;
+  pos_z: number;
+  length: number;
+  width: number;
+  rotation: number;
+}

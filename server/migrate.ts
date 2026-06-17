@@ -109,6 +109,21 @@ async function migrate() {
         ALTER TABLE shelves ADD hidden_at DATETIMEOFFSET NULL;
       END;
 
+      -- Create custom_features table
+      IF OBJECT_ID('custom_features', 'U') IS NULL
+      BEGIN
+        CREATE TABLE custom_features (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          campus_id INT FOREIGN KEY REFERENCES campuses(id) ON DELETE CASCADE,
+          type VARCHAR(50) NOT NULL,
+          pos_x DECIMAL(10, 2) NOT NULL,
+          pos_z DECIMAL(10, 2) NOT NULL,
+          length DECIMAL(10, 2) NOT NULL,
+          width DECIMAL(10, 2),
+          rotation DECIMAL(10, 2)
+        );
+      END;
+
       -- Xóa constraint nếu tồn tại
       IF EXISTS (SELECT * FROM sys.key_constraints WHERE name = 'shelves_campus_id_code_key')
       BEGIN
@@ -259,6 +274,20 @@ async function migrate() {
       console.log(`⚙️ Recalculating dynamic labels & Dewey ranges for ${campus}...`);
       for (const rackNumber of racksToRecalculate) {
         await recalculateUShapeLabels(campusId, rackNumber);
+      }
+
+      // 3. Seed custom features for Thu Duc if none exist
+      if (campus === 'Thu Duc') {
+        const featureCheck = await client.query('SELECT TOP 1 id FROM custom_features WHERE campus_id = $1', [campusId]);
+        if (featureCheck.rows.length === 0) {
+          console.log(`🟫 Seeding default low racks for Thu Duc...`);
+          await client.query(`
+            INSERT INTO custom_features (campus_id, type, pos_x, pos_z, length, width, rotation)
+            VALUES 
+            ($1, 'low_rack', -3, 12, 16, 1.2, 0),
+            ($1, 'low_rack', -3, -8, 16, 1.2, 0)
+          `, [campusId]);
+        }
       }
 
       console.log(`✅ Migrated ${campus}.`);

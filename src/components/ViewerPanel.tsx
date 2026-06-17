@@ -3,7 +3,7 @@ import { MapControls, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import BookshelfScene, { type PathWaypoint } from './BookshelfScene';
-import type { SearchResult, RackInfo, ShelfInfo } from '../types';
+import type { SearchResult, RackInfo, ShelfInfo, CustomFeature } from '../types';
 
 const authFetch = (url: string, options: RequestInit = {}) => {
   const token = localStorage.getItem('adminToken');
@@ -38,6 +38,7 @@ export default function ViewerPanel({
   onExitExternalGuide
 }: ViewerPanelProps) {
   const [racks, setRacks] = useState<RackInfo[]>([]);
+  const [features, setFeatures] = useState<CustomFeature[]>([]);
   const [guideWaypoints, setGuideWaypoints] = useState<PathWaypoint[] | null>(null);
   const [isGuideMode, setIsGuideMode] = useState(false);
   const [currentGuideStep, setCurrentGuideStep] = useState(0);
@@ -110,12 +111,18 @@ export default function ViewerPanel({
       try {
         const res = await fetch(`/api/racks?campus=${encodeURIComponent(campus)}`);
         const data = await res.json();
+        
+        const featureRes = await fetch(`/api/features?campus=${encodeURIComponent(campus)}`);
+        const featureData = await featureRes.json();
+        
         if (active) {
           setRacks(data.racks || []);
+          setFeatures(featureData.features || []);
         }
       } catch {
         if (active) {
           setRacks([]);
+          setFeatures([]);
         }
       }
     }
@@ -206,11 +213,19 @@ export default function ViewerPanel({
   };
 
   const [isAdminMode, setIsAdminMode] = useState(false);
-  const [adminSubMode, setAdminSubMode] = useState<'menu' | 'add' | 'manage' | 'hidden' | null>(null);
+  const [adminSubMode, setAdminSubMode] = useState<'menu' | 'add' | 'manage' | 'features' | 'hidden' | null>(null);
   const [editingShelf, setEditingShelf] = useState<ShelfInfo | null>(null);
+  const [editingFeature, setEditingFeature] = useState<CustomFeature | null>(null);
   const [prefilledDewey, setPrefilledDewey] = useState<{
     s1: string, e1: string, s2: string, e2: string, c1: string, c2: string
   }>({ s1: '0.000', e1: '0.000', s2: '0.000', e2: '0.000', c1: '', c2: '' });
+
+  useEffect(() => {
+    if (campus !== 'Thu Duc' && adminSubMode === 'features') {
+      setAdminSubMode('menu');
+      setEditingFeature(null);
+    }
+  }, [campus, adminSubMode]);
 
   const suggestedCodes = useMemo(() => {
     if (!addingShelfPos) return { code1: '', code2: '' };
@@ -604,6 +619,7 @@ export default function ViewerPanel({
                   setIsAdminMode(true);
                   setEditingShelf(null);
                   setAddingShelfPos(null);
+                  setEditingFeature(null);
                 }
               }}
             >
@@ -652,6 +668,7 @@ export default function ViewerPanel({
         <Suspense fallback={null}>
           <BookshelfScene
             racks={racks}
+            customFeatures={features}
             campus={campus}
             highlightRack={focusRack}
             highlightBay={focusBay}
@@ -659,7 +676,28 @@ export default function ViewerPanel({
             startRackNumber={userStartRack}
             onBayClick={handleSceneBayClick}
             onPathCalculated={setGuideWaypoints}
-            isAdminMode={isAdminMode && adminSubMode === 'add'}
+            isAdminMode={isAdminMode}
+            adminSubMode={adminSubMode}
+            onFeatureClick={(featureId) => {
+              if (adminSubMode === 'features') {
+                const feat = features.find(f => f.id === featureId);
+                if (feat) setEditingFeature(feat);
+              }
+            }}
+            onAddFeatureAt={(x, z) => {
+              if (adminSubMode === 'features') {
+                setEditingFeature({
+                  id: 0,
+                  campus_id: 0,
+                  type: 'low_rack',
+                  pos_x: x,
+                  pos_z: z + 7, // Để Z đầu = z - 1 (vừa khít mép kệ ngoài cùng)
+                  length: 16,
+                  width: 1.2,
+                  rotation: 0
+                });
+              }
+            }}
             onAddRackAt={(x, z) => {
               // Tính số Rack mặc định dựa trên toạ độ Z chuẩn
               let suggestedRack = 10;
@@ -782,6 +820,15 @@ export default function ViewerPanel({
                 <small>Nhấn vào kệ để sửa hoặc xóa</small>
               </div>
             </button>
+            {campus === 'Thu Duc' && (
+              <button className="admin-menu-btn" onClick={() => { setAdminSubMode('features'); setAddingShelfPos(null); setEditingShelf(null); }}>
+                <span className="admin-menu-icon">🟫</span>
+                <div>
+                  <strong>Quản lý khối 3D</strong>
+                  <small>Thêm/Sửa các khối màu nâu</small>
+                </div>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -790,7 +837,7 @@ export default function ViewerPanel({
       {isAdminMode && adminSubMode && adminSubMode !== 'menu' && (
         <button
           className="admin-back-btn"
-          onClick={() => { setAdminSubMode('menu'); setEditingShelf(null); setAddingShelfPos(null); }}
+          onClick={() => { setAdminSubMode('menu'); setEditingShelf(null); setAddingShelfPos(null); setEditingFeature(null); }}
         >
           ← Quay lại menu
         </button>
@@ -1078,6 +1125,81 @@ export default function ViewerPanel({
                 <span>🚶‍♂️</span> Tìm đường đi
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+
+      {isAdminMode && adminSubMode === 'features' && editingFeature && (
+        <div
+          className="admin-shelf-panel"
+          key={`feature-${editingFeature.id}`}
+        >
+          <h3>🟫 {editingFeature.id ? 'Sửa Khối' : 'Thêm Khối Mới'}</h3>
+          <div className="admin-form-group">
+            <label>Loại (type):</label>
+            <input type="text" id="featType" defaultValue={editingFeature.type} />
+          </div>
+          <div className="admin-form-group">
+            <label>Toạ độ X:</label>
+            <input type="number" id="featX" defaultValue={editingFeature.pos_x} step="0.5" readOnly style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+          </div>
+          <div className="admin-form-group">
+            <label>Z đầu (bắt đầu):</label>
+            <input type="number" id="featZStart" defaultValue={editingFeature.pos_z - (editingFeature.length / 2)} step="0.5" onChange={() => {
+              const start = parseFloat((document.getElementById('featZStart') as HTMLInputElement).value) || 0;
+              const end = parseFloat((document.getElementById('featZEnd') as HTMLInputElement).value) || 0;
+              const lenEl = document.getElementById('featLengthDisplay') as HTMLInputElement;
+              if (lenEl) lenEl.value = Math.abs(end - start).toString();
+            }} />
+          </div>
+          <div className="admin-form-group">
+            <label>Z cuối (kết thúc):</label>
+            <input type="number" id="featZEnd" defaultValue={editingFeature.pos_z + (editingFeature.length / 2)} step="0.5" onChange={() => {
+              const start = parseFloat((document.getElementById('featZStart') as HTMLInputElement).value) || 0;
+              const end = parseFloat((document.getElementById('featZEnd') as HTMLInputElement).value) || 0;
+              const lenEl = document.getElementById('featLengthDisplay') as HTMLInputElement;
+              if (lenEl) lenEl.value = Math.abs(end - start).toString();
+            }} />
+          </div>
+          <div className="admin-form-group">
+            <label>Chiều dài (tự động):</label>
+            <input type="number" id="featLengthDisplay" defaultValue={editingFeature.length} readOnly style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+          </div>
+          <div className="admin-actions">
+            <button className="admin-btn update" onClick={async () => {
+              const type = (document.getElementById('featType') as HTMLInputElement).value;
+              const posX = parseFloat((document.getElementById('featX') as HTMLInputElement).value);
+              const zStart = parseFloat((document.getElementById('featZStart') as HTMLInputElement).value);
+              const zEnd = parseFloat((document.getElementById('featZEnd') as HTMLInputElement).value);
+              
+              const length = Math.abs(zEnd - zStart);
+              const posZ = (zStart + zEnd) / 2;
+              
+              const payload = { campus, type, posX, posZ, length, width: 1.2, rotation: 0 };
+              if (editingFeature.id) {
+                await authFetch(`/api/admin/features/${editingFeature.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+              } else {
+                await authFetch(`/api/admin/features`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+              }
+              const res = await fetch(`/api/features?campus=${encodeURIComponent(campus)}`);
+              const data = await res.json();
+              setFeatures(data.features || []);
+              setEditingFeature(null);
+            }}>
+              Lưu
+            </button>
+            {editingFeature.id !== 0 && (
+              <button className="admin-btn delete-shelf" onClick={async () => {
+                if (!confirm('Xoá khối này?')) return;
+                await authFetch(`/api/admin/features/${editingFeature.id}`, { method: 'DELETE' });
+                const res = await fetch(`/api/features?campus=${encodeURIComponent(campus)}`);
+                const data = await res.json();
+                setFeatures(data.features || []);
+                setEditingFeature(null);
+              }}>Xoá</button>
+            )}
+            <button className="admin-btn cancel" onClick={() => setEditingFeature(null)}>Đóng</button>
           </div>
         </div>
       )}

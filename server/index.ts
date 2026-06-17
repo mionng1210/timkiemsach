@@ -14,7 +14,11 @@ import {
   lookupShelf,
   lookupShelfByCode,
   initializeDatabase,
-  toggleHiddenFloor
+  toggleHiddenFloor,
+  getCustomFeatures,
+  addCustomFeature,
+  updateCustomFeature,
+  deleteCustomFeature
 } from './bookService.js';
 
 
@@ -52,6 +56,15 @@ app.get('/api/racks', async (req, res) => {
 
   const racks = await getRackLayout(campus);
   return res.json({ campus, racks });
+});
+
+// API lấy các custom_features (khối hiển thị 3D)
+app.get('/api/features', async (req, res) => {
+  const campus = (req.query.campus as string) || '';
+  if (!campus) return res.status(400).json({ error: 'campus is required' });
+
+  const features = await getCustomFeatures(campus);
+  return res.json({ features });
 });
 
 // API tìm kiếm sách theo Dewey number hoặc code
@@ -181,6 +194,27 @@ app.delete('/api/admin/racks/:rackNumber/bays/:bay', async (req, res) => {
   const success = await deleteBay(campus, rackNumber, bay);
   if (success) return res.json({ success: true });
   return res.status(500).json({ error: 'Failed to delete bay' });
+});
+
+// ===== Admin Custom Features =====
+app.post('/api/admin/features', async (req, res) => {
+  const success = await addCustomFeature(req.body);
+  if (success) return res.json({ success: true });
+  return res.status(500).json({ error: 'Failed to add custom feature' });
+});
+
+app.put('/api/admin/features/:id', async (req, res) => {
+  const id = parseInt(req.params.id);
+  const success = await updateCustomFeature(id, req.body);
+  if (success) return res.json({ success: true });
+  return res.status(500).json({ error: 'Failed to update custom feature' });
+});
+
+app.delete('/api/admin/features/:id', async (req, res) => {
+  const id = parseInt(req.params.id);
+  const success = await deleteCustomFeature(id);
+  if (success) return res.json({ success: true });
+  return res.status(500).json({ error: 'Failed to delete custom feature' });
 });
 
 await initializeDatabase();
