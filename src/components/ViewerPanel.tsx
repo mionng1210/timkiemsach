@@ -21,9 +21,22 @@ interface ViewerPanelProps {
   onGuideModeChange?: (isGuideMode: boolean) => void;
   onClearResult?: () => void;
   onEditingChange?: (isEditing: boolean) => void;
+  isExternalGuided?: boolean;
+  bookId?: string;
+  onExitExternalGuide?: (bookId: string) => void;
 }
 
-export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuideModeChange, onClearResult, onEditingChange }: ViewerPanelProps) {
+export default function ViewerPanel({ 
+  selectedResult, 
+  campus, 
+  onBayClick, 
+  onGuideModeChange, 
+  onClearResult, 
+  onEditingChange,
+  isExternalGuided = false,
+  bookId = '1',
+  onExitExternalGuide
+}: ViewerPanelProps) {
   const [racks, setRacks] = useState<RackInfo[]>([]);
   const [guideWaypoints, setGuideWaypoints] = useState<PathWaypoint[] | null>(null);
   const [isGuideMode, setIsGuideMode] = useState(false);
@@ -67,32 +80,57 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
 
   // Reset guide khi chọn kệ khác hoặc đổi campus
   useEffect(() => {
-    setIsGuideMode(false);
-    setIsPathOverview(false);
-    onGuideModeChange?.(false);
     setCurrentGuideStep(0);
     setGuideWaypoints(null);
     setShowStartPicker(false);
     setUserStartRack(null);
+    
     // Reset focus khi đổi campus hoặc search result
     setFocusRack(selectedResult?.shelf?.rackNumber ?? null);
     setFocusBay(selectedResult?.shelf?.bay ?? null);
     setFocusFace(selectedResult?.shelf?.face ?? null);
-  }, [selectedResult, campus, onGuideModeChange]);
+
+    if (isExternalGuided && selectedResult) {
+      // Ở chế độ dẫn đường ngoài, tự động hiển thị bảng chọn xuất phát
+      setShowStartPicker(true);
+      setIsPathOverview(false);
+      setIsGuideMode(false);
+      onGuideModeChange?.(true);
+    } else {
+      setIsGuideMode(false);
+      setIsPathOverview(false);
+      onGuideModeChange?.(false);
+    }
+  }, [selectedResult, campus, onGuideModeChange, isExternalGuided]);
 
   // Fetch rack layout khi đổi campus
   useEffect(() => {
+    let active = true;
     async function fetchRacks() {
       try {
         const res = await fetch(`/api/racks?campus=${encodeURIComponent(campus)}`);
         const data = await res.json();
-        setRacks(data.racks || []);
+        if (active) {
+          setRacks(data.racks || []);
+        }
       } catch {
-        setRacks([]);
+        if (active) {
+          setRacks([]);
+        }
       }
     }
     fetchRacks();
+    return () => {
+      active = false;
+    };
   }, [campus]);
+
+  // Tự động mở modal đăng nhập khi truy cập /admin
+  useEffect(() => {
+    if (window.location.pathname === '/admin' && !isLoggedIn) {
+      setShowLoginModal(true);
+    }
+  }, [isLoggedIn]);
 
   const shelf = selectedResult?.shelf ?? null;
 
@@ -522,52 +560,58 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
 
   return (
     <div className="viewer-panel">
-      <div className="viewer-top-bar">
-        <div className="rack-counter">
-          🏗️ {racks.length} kệ — {campus === 'Thu Duc' ? '🌳 Thủ Đức' : '🏙️ Sài Gòn'}
-        </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {isAdminMode && (
+      {!isExternalGuided && (
+        <div className="viewer-top-bar">
+          <div className="rack-counter">
+            🏗️ {racks.length} kệ — {campus === 'Thu Duc' ? '🌳 Thủ Đức' : '🏙️ Sài Gòn'}
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {isAdminMode && (
+              <button
+                className="admin-toggle-btn"
+                onClick={() => {
+                  if (adminSubMode === 'hidden') {
+                    setAdminSubMode('menu');
+                  } else {
+                    setAdminSubMode('hidden');
+                    setEditingShelf(null);
+                    setAddingShelfPos(null);
+                  }
+                }}
+              >
+                {adminSubMode === 'hidden' ? '👁️ Hiện Menu' : '👁️‍🗨️ Ẩn Menu'}
+              </button>
+            )}
             <button
-              className="admin-toggle-btn"
+              className={`admin-toggle-btn ${isAdminMode ? 'active' : ''}`}
               onClick={() => {
-                if (adminSubMode === 'hidden') {
-                  setAdminSubMode('menu');
+                if (!isAdminMode && !isLoggedIn) {
+                  setShowLoginModal(true);
+                  return;
+                }
+                if (isAdminMode) {
+                  // Tắt admin mode: Đăng xuất luôn và quay về mock.html
+                  localStorage.removeItem('isAdmin');
+                  localStorage.removeItem('adminToken');
+                  setIsLoggedIn(false);
+                  setAdminSubMode(null);
+                  setIsAdminMode(false);
+                  setEditingShelf(null);
+                  setAddingShelfPos(null);
+                  window.location.href = `/mock.html?book=${bookId}`;
                 } else {
-                  setAdminSubMode('hidden');
+                  setAdminSubMode('menu');
+                  setIsAdminMode(true);
                   setEditingShelf(null);
                   setAddingShelfPos(null);
                 }
               }}
             >
-              {adminSubMode === 'hidden' ? '👁️ Hiện Menu' : '👁️‍🗨️ Ẩn Menu'}
+              {isAdminMode ? '🔓 Admin Mode: ON' : '🔒 Admin Mode: OFF'}
             </button>
-          )}
-          <button
-            className={`admin-toggle-btn ${isAdminMode ? 'active' : ''}`}
-            onClick={() => {
-              if (!isAdminMode && !isLoggedIn) {
-                setShowLoginModal(true);
-                return;
-              }
-              if (isAdminMode) {
-                // Tắt admin mode: Đăng xuất luôn
-                localStorage.removeItem('isAdmin');
-                localStorage.removeItem('adminToken');
-                setIsLoggedIn(false);
-                setAdminSubMode(null);
-              } else {
-                setAdminSubMode('menu');
-              }
-              setIsAdminMode(!isAdminMode);
-              setEditingShelf(null);
-              setAddingShelfPos(null);
-            }}
-          >
-            {isAdminMode ? '🔓 Admin Mode: ON' : '🔒 Admin Mode: OFF'}
-          </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <Canvas
         key={campus}
@@ -993,7 +1037,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </div>
       )}
 
-      {selectedResult && !isGuideMode && !isPathOverview && !(isAdminMode && adminSubMode === 'manage') && !(isMobile && isAdminMode && adminSubMode === 'menu') && (
+      {selectedResult && !isGuideMode && !isPathOverview && !(isAdminMode && adminSubMode === 'manage') && !(isMobile && isAdminMode && adminSubMode === 'menu') && !showStartPicker && (
         <div className="viewer-info-overlay">
           <div className="info-card">
             <div className="info-card-header">
@@ -1038,7 +1082,7 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
         </div>
       )}
 
-      {selectedResult && !isGuideMode && !isPathOverview && !(isAdminMode && adminSubMode === 'manage') && (
+      {selectedResult && !isGuideMode && !isPathOverview && !(isAdminMode && adminSubMode === 'manage') && !showStartPicker && (
         <div className="bay-label-3d">
           <div className="bay-number">Kệ {shelf!.rackNumber}</div>
           <div className="bay-desc">
@@ -1094,7 +1138,16 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
             </div>
 
             <div className="start-picker-actions">
-              <button className="guide-btn guide-btn-exit" onClick={() => setShowStartPicker(false)}>
+              <button
+                className="guide-btn guide-btn-exit"
+                onClick={() => {
+                  if (isExternalGuided) {
+                    onExitExternalGuide?.(bookId);
+                  } else {
+                    setShowStartPicker(false);
+                  }
+                }}
+              >
                 Huỷ
               </button>
               <button
@@ -1139,7 +1192,14 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
           </div>
           <button
             className="guide-btn guide-btn-exit"
-            onClick={() => { setIsGuideMode(false); onGuideModeChange?.(false); }}
+            onClick={() => {
+              if (isExternalGuided) {
+                onExitExternalGuide?.(bookId);
+              } else {
+                setIsGuideMode(false);
+                onGuideModeChange?.(false);
+              }
+            }}
           >
             ❌ Thoát hướng dẫn
           </button>
@@ -1172,8 +1232,12 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
               className="guide-btn guide-btn-exit"
               style={{ width: 'auto', padding: '0 20px' }}
               onClick={() => {
-                setIsPathOverview(false);
-                setShowStartPicker(true);
+                if (isExternalGuided) {
+                  onExitExternalGuide?.(bookId);
+                } else {
+                  setIsPathOverview(false);
+                  setShowStartPicker(true);
+                }
               }}
             >
               Thoát
@@ -1184,7 +1248,13 @@ export default function ViewerPanel({ selectedResult, campus, onBayClick, onGuid
       {showLoginModal && (
         <div className="guide-overlay" style={{ zIndex: 9999 }}>
           <div className="guide-modal" style={{ maxWidth: '400px', padding: '30px', textAlign: 'center' }}>
-            <button className="guide-close" onClick={() => { setShowLoginModal(false); setLoginError(''); }}>×</button>
+            <button className="guide-close" onClick={() => { 
+              setShowLoginModal(false); 
+              setLoginError(''); 
+              if (window.location.pathname === '/admin') {
+                window.location.href = `/mock.html?book=${bookId}`;
+              }
+            }}>×</button>
             <div className="guide-icon" style={{ fontSize: '40px', marginBottom: '10px' }}>🔐</div>
             <h2 style={{ fontSize: '20px', marginBottom: '10px', color: 'var(--text-primary)' }}>Đăng nhập Admin</h2>
             <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '20px' }}>Vui lòng đăng nhập tài khoản để vào hệ thống quản lý.</p>

@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chi tiết tài liệu - Thư viện HUTECH (Giả lập Demo)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary-blue: #00569d;
+      --secondary-blue: #0070c0;
+      --text-dark: #333333;
+      --text-muted: #666666;
+      --border-color: #dddddd;
+      --bg-gray: #f8f9fa;
+      --card-bg: #ffffff;
+      --accent-orange: #d35400;
+      --accent-brown: #8e44ad;
+      --btn-brown: #a0522d;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Inter', sans-serif;
+    }
+
+    body {
+      background-color: #f1f2f6;
+      color: var(--text-dark);
+      line-height: 1.6;
+    }
+
+    /* Top Bar */
+    .top-bar {
+      background-color: white;
+      border-bottom: 1px solid var(--border-color);
+      padding: 10px 8%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .logo-img {
+      height: 48px;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .lang-switch {
+      display: flex;
+      gap: 5px;
+      margin-right: 15px;
+    }
+
+    .lang-flag {
+      width: 24px;
+      height: 16px;
+      cursor: pointer;
+      border: 1px solid #ddd;
+    }
+
+    .auth-btn {
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+
+    .btn-register {
+      background-color: #e74c3c;
+      color: white;
+      border: none;
+    }
+
+    .btn-register:hover {
+      background-color: #c0392b;
+    }
+
+    .btn-login {
+      background-color: transparent;
+      color: var(--text-dark);
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-login:hover {
+      background-color: #f5f5f5;
+    }
+
+    /* Main Menu Bar */
+    .nav-bar {
+      background-color: var(--primary-blue);
+      color: white;
+      padding: 0 8%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .nav-menu {
+      display: flex;
+      list-style: none;
+    }
+
+    .nav-item {
+      position: relative;
+    }
+
+    .nav-link {
+      display: block;
+      padding: 14px 18px;
+      color: white;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      transition: background 0.2s;
+    }
+
+    .nav-link:hover, .nav-item.active .nav-link {
+      background-color: rgba(255,255,255,0.15);
+    }
+
+    .nav-link.has-sub::after {
+      content: ' ▾';
+      font-size: 10px;
+    }
+
+    .qr-icon {
+      font-size: 20px;
+      cursor: pointer;
+      padding: 10px;
+      border-radius: 50%;
+      background-color: rgba(255,255,255,0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Tab Selector for Demo */
+    .demo-selector {
+      background-color: #2c3e50;
+      padding: 12px 8%;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      color: white;
+    }
+
+    .demo-label {
+      font-weight: 700;
+      font-size: 14px;
+      color: #f1c40f;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .demo-tabs {
+      display: flex;
+      gap: 10px;
+    }
+
+    .demo-tab {
+      padding: 8px 16px;
+      background-color: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #bdc3c7;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .demo-tab:hover {
+      background-color: rgba(255,255,255,0.2);
+      color: white;
+    }
+
+    .demo-tab.active {
+      background-color: var(--secondary-blue);
+      border-color: var(--secondary-blue);
+      color: white;
+    }
+
+    .admin-link {
+      margin-left: auto;
+      color: #3498db;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .admin-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Content Area */
+    .main-container {
+      width: 84%;
+      margin: 30px auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+      padding: 30px;
+    }
+
+    .breadcrumb {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 25px;
+      border-bottom: 1px solid #eeeeee;
+      padding-bottom: 12px;
+    }
+
+    .breadcrumb a {
+      color: var(--primary-blue);
+      text-decoration: none;
+    }
+
+    .breadcrumb a:hover {
+      text-decoration: underline;
+    }
+
+    /* Book Grid layout */
+    .book-layout {
+      display: grid;
+      grid-template-columns: 220px 1fr 320px;
+      gap: 35px;
+    }
+
+    /* Left: Cover */
+    .book-cover-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .book-cover {
+      width: 100%;
+      height: 300px;
+      border-radius: 6px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Cover Styling Sách 1: Chưa có ảnh bìa */
+    .cover-grey {
+      background: linear-gradient(135deg, #7f8c8d, #95a5a6);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .cover-grey-icon {
+      font-size: 50px;
+      margin-bottom: 15px;
+      opacity: 0.8;
+    }
+
+    .cover-grey-text {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    /* Cover Styling Sách 2: Công nghệ phần mềm */
+    .cover-red {
+      background: linear-gradient(135deg, #c0392b, #e74c3c);
+      color: white;
+      padding: 25px 15px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 100%;
+    }
+
+    .cover-red-title {
+      font-size: 18px;
+      font-weight: 800;
+      text-align: center;
+      margin-top: 20px;
+      text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+      line-height: 1.3;
+    }
+
+    .cover-red-sub {
+      font-size: 11px;
+      text-align: center;
+      opacity: 0.8;
+      font-weight: 500;
+    }
+
+    .cover-red-publisher {
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      border-top: 1px solid rgba(255,255,255,0.3);
+      padding-top: 10px;
+    }
+
+    .book-id-badge {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    /* Middle: Details */
+    .book-details {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .book-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--primary-blue);
+      line-height: 1.3;
+    }
+
+    .detail-row {
+      display: flex;
+      font-size: 14px;
+      padding: 6px 0;
+      border-bottom: 1px dotted #eeeeee;
+    }
+
+    .detail-label {
+      width: 140px;
+      font-weight: 600;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .detail-value {
+      color: var(--text-dark);
+    }
+
+    .detail-value a {
+      color: var(--secondary-blue);
+      text-decoration: none;
+    }
+
+    .detail-value a:hover {
+      text-decoration: underline;
+    }
+
+    .subject-list {
+      list-style: none;
+      margin-top: 5px;
+    }
+
+    .subject-item {
+      font-size: 13px;
+      margin-bottom: 4px;
+      color: var(--secondary-blue);
+      cursor: pointer;
+    }
+    .subject-item::before {
+      content: '• ';
+      color: var(--text-muted);
+    }
+
+    /* Right: Location Box */
+    .location-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .location-card {
+      background-color: #f2f5f9;
+      border: 1px solid #d1dbe5;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .location-card-title {
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #2c3e50;
+      margin-bottom: 15px;
+      border-bottom: 2px solid #3498db;
+      padding-bottom: 6px;
+    }
+
+    .location-stat {
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+
+    .location-stat strong {
+      font-weight: 600;
+    }
+
+    .rack-group {
+      margin-top: 15px;
+      border-top: 1px solid #d1dbe5;
+      padding-top: 15px;
+    }
+
+    .rack-line {
+      display: flex;
+      align-items: center;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
+    .rack-label {
+      font-weight: 600;
+      margin-right: 8px;
+    }
+
+    .rack-pill {
+      background-color: #2c3e50;
+      color: white;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 11px;
+      margin-right: 8px;
+    }
+
+    .campus-name {
+      font-size: 13px;
+      color: var(--text-dark);
+      font-weight: 500;
+    }
+
+    .direction-link {
+      color: var(--secondary-blue);
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 12px;
+      margin-left: auto;
+      transition: opacity 0.2s;
+    }
+
+    .direction-link:hover {
+      opacity: 0.8;
+      text-decoration: underline;
+    }
+
+    .dewey-call {
+      margin-top: 15px;
+      border-top: 1px solid #d1dbe5;
+      padding-top: 15px;
+      font-size: 13px;
+    }
+
+    /* Right column brown buttons */
+    .action-btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      color: white;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.2s;
+    }
+
+    .btn-quote {
+      background-color: #b35900;
+    }
+    .btn-quote:hover {
+      background-color: #994d00;
+    }
+
+    .btn-marc {
+      background-color: #8c4615;
+    }
+    .btn-marc:hover {
+      background-color: #733910;
+    }
+
+    /* Responsive */
+    @media (max-width: 1100px) {
+      .book-layout {
+        grid-template-columns: 1fr;
+      }
+      .book-cover-panel {
+        max-width: 220px;
+        margin: 0 auto;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <div class="logo-container">
+      <img src="https://data.hutech.edu.vn/library/images/logo-hutech.png" alt="HUTECH Logo" class="logo-img" onerror="this.src='https://hutech.edu.vn/img/logo-hutech.png'; this.onerror=null;">
+    </div>
+    <div class="top-actions">
+      <div class="lang-switch">
+        <img src="https://flagcdn.com/w40/vn.png" alt="Tiếng Việt" class="lang-flag">
+        <img src="https://flagcdn.com/w40/gb.png" alt="English" class="lang-flag">
+      </div>
+      <a href="#" class="auth-btn btn-register">Đăng ký</a>
+      <a href="#" class="auth-btn btn-login">Đăng nhập</a>
+    </div>
+  </div>
+
+  <!-- Main Navigation Menu -->
+  <div class="nav-bar">
+    <ul class="nav-menu">
+      <li class="nav-item active"><a href="#" class="nav-link">Trang chủ</a></li>
+      <li class="nav-item"><a href="#" class="nav-link has-sub">Giới thiệu</a></li>
+      <li class="nav-item"><a href="#" class="nav-link">Tra cứu</a></li>
+      <li class="nav-item"><a href="#" class="nav-link has-sub">Tài nguyên</a></li>
+      <li class="nav-item"><a href="#" class="nav-link">Sách mới</a></li>
+      <li class="nav-item"><a href="#" class="nav-link">Liên kết</a></li>
+      <li class="nav-item"><a href="#" class="nav-link has-sub">Hướng dẫn</a></li>
+      <li class="nav-item"><a href="#" class="nav-link has-sub">Công cụ</a></li>
+    </ul>
+    <div class="qr-icon" title="Quét mã QR tìm sách">📱</div>
+  </div>
+
+  <!-- Demo Selector (Chỉ dành cho phiên bản demo Pair Programming) -->
+  <div class="demo-selector">
+    <div class="demo-label">Demo Học Tập:</div>
+    <div class="demo-tabs">
+      <button class="demo-tab active" onclick="switchBook('1')">Sách 1 (Công pháp quốc tế)</button>
+      <button class="demo-tab" onclick="switchBook('2')">Sách 2 (Công nghệ phần mềm)</button>
+    </div>
+    <a href="/admin" class="admin-link">⚙️ Giao diện Quản lý Kệ (Admin) →</a>
+  </div>
+
+  <!-- Main Book Details Container -->
+  <div class="main-container">
+    <div class="breadcrumb">
+      <a href="#">Home</a> / <a href="#">Details</a>
+    </div>
+
+    <!-- Sách 1: Giáo trình Công pháp quốc tế -->
+    <div id="book-1-view" class="book-layout">
+      <!-- Cover -->
+      <div class="book-cover-panel">
+        <div class="book-cover cover-grey">
+          <div class="cover-grey-icon">📖</div>
+          <div class="cover-grey-text">CHƯA CÓ<br>ẢNH BÌA</div>
+        </div>
+        <div class="book-id-badge">ID: 147193</div>
+      </div>
+
+      <!-- Details -->
+      <div class="book-details">
+        <h1 class="book-title">Giáo trình Công pháp quốc tế . Quyển 2</h1>
+        
+        <div class="detail-row">
+          <div class="detail-label">Bộ sưu tập:</div>
+          <div class="detail-value"><a href="#">Giáo trình;</a></div>
+        </div>
+        
+        <div class="detail-row">
+          <div class="detail-label">Tác giả:</div>
+          <div class="detail-value">
+            <a href="#">Ngô Hữu Phước</a>, <a href="#">Nguyễn Thị Vân Huyền</a>, <a href="#">Trần Thăng Long</a>, <a href="#">Trần Thị Thùy Dương</a>
+          </div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Xuất bản:</div>
+          <div class="detail-value">Hà Nội : Hồng Đức, 2016</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">ISBN-13:</div>
+          <div class="detail-value">9786048682415</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Ký hiệu phân loại:</div>
+          <div class="detail-value">341</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Mô tả vật lý:</div>
+          <div class="detail-value">493 tr. ; , 21 cm</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Ngôn ngữ:</div>
+          <div class="detail-value">vie</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Tiêu đề chủ đề:</div>
+          <div class="detail-value">
+            <ul class="subject-list">
+              <li class="subject-item">Luật quốc tế</li>
+              <li class="subject-item">International law</li>
+              <li class="subject-item">Công pháp quốc tế</li>
+              <li class="subject-item">International public law</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Location Panel -->
+      <div class="location-panel">
+        <div class="location-card">
+          <div class="location-card-title">Vị trí sách</div>
+          <div class="location-stat">
+            Số bản có sẵn: <strong>1</strong>
+          </div>
+          <div class="location-stat">
+            Đang mượn: <strong>0</strong>
+          </div>
+
+          <div class="rack-group">
+            <div class="rack-line">
+              <span class="rack-label">DÃY KỆ ➔</span>
+              <span class="rack-pill">9C</span>
+              <span class="campus-name">Sai Gon Campus</span>
+              <a href="/?dewey=341.000&campus=Sai%20Gon&code=9C&book=1" class="direction-link">(Xem chỉ đường)</a>
+            </div>
+          </div>
+
+          <div class="dewey-call">
+            ➔ Ký hiệu xếp giá: <strong>341.000</strong>
+          </div>
+        </div>
+
+        <button class="action-btn btn-quote">❝ Tạo mục trích dẫn</button>
+        <button class="action-btn btn-marc">📄 Xem biểu ghi MARC</button>
+      </div>
+    </div>
+
+    <!-- Sách 2: Công nghệ phần mềm -->
+    <div id="book-2-view" class="book-layout" style="display: none;">
+      <!-- Cover -->
+      <div class="book-cover-panel">
+        <div class="book-cover cover-red">
+          <div class="cover-red-title">CÔNG NGHỆ<br>PHẦN MỀM</div>
+          <div class="cover-red-sub">Khoa Công nghệ Thông tin</div>
+          <div class="cover-red-publisher">HUTECH 2014</div>
+        </div>
+        <div class="book-id-badge">ID: 103829</div>
+      </div>
+
+      <!-- Details -->
+      <div class="book-details">
+        <h1 class="book-title">Công nghệ phần mềm</h1>
+        
+        <div class="detail-row">
+          <div class="detail-label">Bộ sưu tập:</div>
+          <div class="detail-value"><a href="#">Giáo trình;</a></div>
+        </div>
+        
+        <div class="detail-row">
+          <div class="detail-label">Tác giả:</div>
+          <div class="detail-value">
+            <a href="#">Khoa Công nghệ Thông tin Bộ môn Công nghệ Phần mềm</a>
+          </div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Xuất bản:</div>
+          <div class="detail-value">TP.HCM : HUTECH, 2014</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Ký hiệu phân loại:</div>
+          <div class="detail-value">005.1</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Mô tả vật lý:</div>
+          <div class="detail-value">188tr. ; , 25cm</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Ngôn ngữ:</div>
+          <div class="detail-value">vie</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Tiêu đề chủ đề:</div>
+          <div class="detail-value">
+            <ul class="subject-list">
+              <li class="subject-item">Công nghệ phần mềm</li>
+              <li class="subject-item">Software engineering</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Location Panel -->
+      <div class="location-panel">
+        <div class="location-card">
+          <div class="location-card-title">Vị trí sách</div>
+          <div class="location-stat">
+            Số bản có sẵn: <strong>2</strong>
+          </div>
+          <div class="location-stat">
+            Đang mượn: <strong>0</strong>
+          </div>
+
+          <div class="rack-group">
+            <div class="rack-line">
+              <span class="rack-label">DÃY KỆ ➔</span>
+              <span class="rack-pill">1F</span>
+              <span class="campus-name">Thu Duc Campus</span>
+              <a href="/?dewey=005.100&campus=Thu%20Duc&code=1F&book=2" class="direction-link">(Xem chỉ đường)</a>
+            </div>
+            <div class="rack-line">
+              <span class="rack-label">DÃY KỆ ➔</span>
+              <span class="rack-pill">2B</span>
+              <span class="campus-name">Sai Gon Campus</span>
+              <a href="/?dewey=005.100&campus=Sai%20Gon&code=2B&book=2" class="direction-link">(Xem chỉ đường)</a>
+            </div>
+          </div>
+
+          <div class="dewey-call">
+            ➔ Ký hiệu xếp giá: <strong>005.100</strong>
+          </div>
+        </div>
+
+        <button class="action-btn btn-quote">❝ Tạo mục trích dẫn</button>
+        <button class="action-btn btn-marc">📄 Xem biểu ghi MARC</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    function switchBook(bookId) {
+      // Toggle views
+      if (bookId === '1') {
+        document.getElementById('book-1-view').style.display = 'grid';
+        document.getElementById('book-2-view').style.display = 'none';
+        document.querySelectorAll('.demo-tab')[0].classList.add('active');
+        document.querySelectorAll('.demo-tab')[1].classList.remove('active');
+      } else {
+        document.getElementById('book-1-view').style.display = 'none';
+        document.getElementById('book-2-view').style.display = 'grid';
+        document.querySelectorAll('.demo-tab')[0].classList.remove('active');
+        document.querySelectorAll('.demo-tab')[1].classList.add('active');
+      }
+      
+      // Update browser URL query parameter without page reload
+      const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?book=' + bookId;
+      window.history.pushState({ path: newUrl }, '', newUrl);
+    }
+
+    // Auto load state from URL
+    window.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const book = params.get('book');
+      if (book === '2') {
+        switchBook('2');
+      } else {
+        switchBook('1');
+      }
+    });
+  </script>
+</body>
+</html>

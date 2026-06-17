@@ -1953,3 +1953,10 @@ html, body, #root {
     color: #fff !important;
   }
 }
+
+/* ===== Guided Mode Layout Overrides ===== */
+.user-guided-layout .viewer-panel {
+  width: 100vw;
+  height: 100vh;
+}
+
