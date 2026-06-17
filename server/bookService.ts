@@ -1,6 +1,10 @@
 import sql from 'mssql';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
+import XLSX from 'xlsx';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
 
 dotenv.config();
 
@@ -871,3 +875,294 @@ export async function loginAdmin(username: string, passwordPlain: string): Promi
     return false;
   }
 }
+
+// Helper functions for Excel migration (equivalent to server/migrate.ts)
+function letterToBayFace(letter: string, maxLetter: string): { bay: number; face: number } {
+  const idx = letter.toLowerCase().charCodeAt(0) - 97; // a=0, b=1, ...
+  const maxIdx = maxLetter.toLowerCase().charCodeAt(0) - 97;
+  const totalPositions = maxIdx + 1; // f→6, d→4, b→2
+  const half = totalPositions / 2;
+
+  if (idx < half) {
+    return { face: 1, bay: idx + 1 };                // Mặt trước: a→B1, b→B2, c→B3
+  } else {
+    return { face: 2, bay: totalPositions - idx };    // Mặt sau (U ngược)
+  }
+}
+
+function getBayFaceForThuDuc(letter: string): { bay: number; face: number } {
+  const code = letter.toLowerCase().charCodeAt(0);
+  if (code >= 97 && code <= 102) { // a-f
+    return { face: 2, bay: code - 96 }; // a=1, b=2, ..., f=6 (Mặt sau)
+  } else if (code >= 103 && code <= 108) { // g-l
+    return { face: 1, bay: code - 102 }; // g=1, h=2, ..., l=6 (Mặt trước)
+  }
+  return { face: 1, bay: 1 };
+}
+
+// Hàm tự động tạo bảng, nạp excel, seed grid, seed admin
+export async function initializeDatabase(): Promise<void> {
+  try {
+    console.log('🚀 Checking database state and initializing tables...');
+
+    // 1. Tạo các bảng cơ sở dữ liệu nếu chưa tồn tại
+    await pool.query(`
+      -- Create campuses table
+      IF OBJECT_ID('campuses', 'U') IS NULL
+      BEGIN
+        CREATE TABLE campuses (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          name VARCHAR(255) UNIQUE NOT NULL
+        );
+      END;
+
+      -- Create admins table
+      IF OBJECT_ID('admins', 'U') IS NULL
+      BEGIN
+        CREATE TABLE admins (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          username VARCHAR(255) UNIQUE NOT NULL,
+          password_hash VARCHAR(255) NOT NULL
+        );
+      END;
+
+      -- Create shelves table
+      IF OBJECT_ID('shelves', 'U') IS NULL
+      BEGIN
+        CREATE TABLE shelves (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          campus_id INT FOREIGN KEY REFERENCES campuses(id) ON DELETE CASCADE,
+          rack_number INT NOT NULL,
+          letter CHAR(1) NOT NULL,
+          code VARCHAR(10) NOT NULL,
+          dewey_start DECIMAL(10, 3) NOT NULL,
+          dewey_end DECIMAL(10, 3) NOT NULL,
+          bay INT NOT NULL,
+          face INT NOT NULL,
+          position_x DECIMAL(10, 2),
+          position_z DECIMAL(10, 2),
+          is_deleted BIT DEFAULT 0,
+          original_letter CHAR(1),
+          original_code VARCHAR(10),
+          original_dewey_start DECIMAL(10, 3),
+          original_dewey_end DECIMAL(10, 3),
+          hidden_at DATETIMEOFFSET
+        );
+      END;
+    `);
+
+    // Đồng bộ hóa các cột metadata nếu bảng đã tồn tại trước đó nhưng thiếu cột
+    await ensureShelfMetadataColumns();
+
+    await pool.query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('shelves') AND name = 'original_letter')
+      BEGIN
+        ALTER TABLE shelves ADD original_letter CHAR(1) NULL;
+      END;
+
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('shelves') AND name = 'original_code')
+      BEGIN
+        ALTER TABLE shelves ADD original_code VARCHAR(10) NULL;
+      END;
+
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('shelves') AND name = 'original_dewey_start')
+      BEGIN
+        ALTER TABLE shelves ADD original_dewey_start DECIMAL(10, 3) NULL;
+      END;
+
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('shelves') AND name = 'original_dewey_end')
+      BEGIN
+        ALTER TABLE shelves ADD original_dewey_end DECIMAL(10, 3) NULL;
+      END;
+
+      -- Xóa constraint cũ nếu tồn tại
+      IF EXISTS (SELECT * FROM sys.key_constraints WHERE name = 'shelves_campus_id_code_key')
+      BEGIN
+        ALTER TABLE shelves DROP CONSTRAINT shelves_campus_id_code_key;
+      END;
+
+      -- Tạo Filtered Index
+      IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'unique_active_shelf_idx' AND object_id = OBJECT_ID('shelves'))
+      BEGIN
+        CREATE UNIQUE INDEX unique_active_shelf_idx ON shelves (campus_id, code) WHERE is_deleted = 0;
+      END;
+    `);
+
+    // 2. Tạo tài khoản admin mặc định nếu chưa có
+    const adminCheck = await pool.query('SELECT id FROM admins');
+    if (adminCheck.rows.length === 0) {
+      console.log('👤 Seeding default admin account...');
+      const adminUser = process.env.ADMIN_USERNAME || 'admin';
+      const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
+      const passwordHash = await bcrypt.hash(adminPass, 10);
+      await pool.query(
+        'INSERT INTO admins (username, password_hash) VALUES ($1, $2)',
+        [adminUser, passwordHash]
+      );
+      console.log(`👤 Admin account seeded (username: ${adminUser}).`);
+    }
+
+    // 3. Kiểm tra xem đã có dữ liệu kệ nào chưa. Nếu chưa có bất kỳ kệ nào, thực hiện nạp dữ liệu từ Excel và sinh Grid.
+    const shelfCheck = await pool.query('SELECT COUNT(*) as cnt FROM shelves');
+    const totalShelvesCount = parseInt(shelfCheck.rows[0].cnt);
+
+    if (totalShelvesCount === 0) {
+      console.log('📁 Database is empty. Starting auto-initialization...');
+
+      // A. Đảm bảo 2 cơ sở (campuses) đã được tạo và lấy ID
+      const campusIds: { [key: string]: number } = {};
+      const campusesNames = ['Thu Duc', 'Sai Gon'];
+      
+      for (const name of campusesNames) {
+        const checkRes = await pool.query('SELECT id FROM campuses WHERE name = $1', [name]);
+        if (checkRes.rows.length > 0) {
+          campusIds[name] = checkRes.rows[0].id;
+        } else {
+          const insertRes = await pool.query('INSERT INTO campuses (name) OUTPUT INSERTED.id VALUES ($1)', [name]);
+          campusIds[name] = insertRes.rows[0].id;
+        }
+      }
+
+      // B. Sinh toàn bộ lưới kệ ẩn (seedGrid) cho cả 2 cơ sở trước để có sẵn các vị trí vật lý
+      console.log('🔌 Seeding Grid Shelves placeholders first...');
+      const numBays = 10;
+      const numRows = 50;
+
+      for (const name of campusesNames) {
+        const campusId = campusIds[name];
+        console.log(`Populating empty grid placeholders for campus: ${name}`);
+        const zOffset = name === 'Thu Duc' ? 6.5 : 17.0;
+
+        let insertedCount = 0;
+        for (let rackIdx = 0; rackIdx < numRows; rackIdx++) {
+          const rackNumber = rackIdx + 1;
+
+          for (let bayIdx = 0; bayIdx < numBays; bayIdx++) {
+            const bay = bayIdx + 1;
+            const positionX = bayIdx * 3.0;
+            const positionZ = name === 'Thu Duc'
+              ? (rackIdx - zOffset) * 4.0
+              : -(rackIdx - zOffset) * 4.0;
+
+            for (const face of [1, 2]) {
+              await pool.query(`
+                INSERT INTO shelves (code, dewey_start, dewey_end, campus_id, rack_number, letter, bay, face, position_x, position_z, is_deleted)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1)
+              `, ['', 0, 0, campusId, rackNumber, 'A', bay, face, positionX, positionZ]);
+              insertedCount++;
+            }
+          }
+        }
+        console.log(`[${name}] Added ${insertedCount} empty grid placeholders.`);
+      }
+
+      // C. Nạp dữ liệu hoạt động thực tế từ các file Excel đè lên các placeholders
+      console.log('📁 Running Excel migration to update active shelves...');
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = path.dirname(__filename);
+      const dataDir = path.resolve(__dirname, '..');
+
+      const files = [
+        { file: 'Thu Duc Campus.xlsx', campus: 'Thu Duc' },
+        { file: 'Sai Gon Campus.xlsx', campus: 'Sai Gon' },
+      ];
+
+      for (const { file, campus } of files) {
+        const filePath = path.join(dataDir, file);
+        console.log(`Reading active layout from ${file}...`);
+        
+        let wb;
+        try {
+          wb = XLSX.readFile(filePath);
+        } catch (e) {
+          console.error(`⚠️ Could not read excel file at ${filePath}. Skipping.`, e);
+          continue;
+        }
+
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows: any[] = XLSX.utils.sheet_to_json(sheet);
+        const campusId = campusIds[campus];
+        const zOffset = campus === 'Thu Duc' ? 6.5 : 17.0;
+
+        // Nhóm kệ theo rack để xử lý U-Shape
+        const rawMap = new Map<number, any[]>();
+        for (const row of rows) {
+          const code = String(row['Code'] || '').trim().toLowerCase();
+          const deweyStart = Number(row['DeweyStart'] || 0);
+          const deweyEnd = Number(row['DeweyEnd'] || 0);
+
+          if (!code) continue;
+          const match = code.match(/^(\d+)([a-l])$/i);
+          if (!match) continue;
+
+          const rackNumber = parseInt(match[1], 10);
+          const letter = match[2].toLowerCase();
+
+          if (!rawMap.has(rackNumber)) rawMap.set(rackNumber, []);
+          rawMap.get(rackNumber)!.push({ code, deweyStart, deweyEnd, rackNumber, letter });
+        }
+
+        for (const [, raws] of rawMap) {
+          const maxLetter = raws.reduce((max, r) => r.letter > max ? r.letter : max, 'a');
+          for (const raw of raws) {
+            const { bay, face } = (campus === 'Thu Duc')
+              ? getBayFaceForThuDuc(raw.letter)
+              : letterToBayFace(raw.letter, maxLetter);
+
+            const positionX = (bay - 1) * 3.0;
+            const positionZ = (campus === 'Thu Duc')
+              ? (raw.rackNumber - 1 - zOffset) * 4.0
+              : -(raw.rackNumber - 1 - zOffset) * 4.0;
+
+            // Tìm kệ đã có sẵn tại vị trí này để update
+            const existingByPos = await pool.query(
+              'SELECT TOP 1 id FROM shelves WHERE campus_id = $1 AND rack_number = $2 AND bay = $3 AND face = $4',
+              [campusId, raw.rackNumber, bay, face]
+            );
+
+            if (existingByPos.rows.length > 0) {
+              await pool.query(
+                `UPDATE shelves SET 
+                  letter = $1, code = $2, dewey_start = $3, dewey_end = $4, 
+                  position_x = $5, position_z = $6, is_deleted = 0,
+                  original_letter = $1, original_code = $2,
+                  original_dewey_start = $3, original_dewey_end = $4
+                 WHERE id = $7`,
+                [raw.letter, raw.code, raw.deweyStart, raw.deweyEnd, positionX, positionZ, existingByPos.rows[0].id]
+              );
+            } else {
+              // Fallback insert nếu vì lý do nào đó không tìm thấy placeholder
+              await pool.query(
+                `INSERT INTO shelves (campus_id, rack_number, letter, code, dewey_start, dewey_end, bay, face, position_x, position_z, is_deleted, original_letter, original_code, original_dewey_start, original_dewey_end)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, $3, $4, $5, $6)`,
+                [campusId, raw.rackNumber, raw.letter, raw.code, raw.deweyStart, raw.deweyEnd, bay, face, positionX, positionZ]
+              );
+            }
+          }
+        }
+
+        // Tính toán lại nhãn U-Shape/Z-Shape cho các kệ vừa update
+        const racksToRecalculate = new Set<number>();
+        for (const [, raws] of rawMap) {
+          for (const raw of raws) {
+            racksToRecalculate.add(raw.rackNumber);
+          }
+        }
+
+        console.log(`⚙️ Recalculating dynamic labels & Dewey ranges for ${campus}...`);
+        for (const rackNumber of racksToRecalculate) {
+          await recalculateUShapeLabels(campusId, rackNumber);
+        }
+
+        console.log(`✅ Migrated active shelves for ${campus}.`);
+      }
+
+      console.log('🎉 Database initialization complete!');
+    } else {
+      console.log('✅ Database already populated. Skipping import & grid seed.');
+    }
+  } catch (err) {
+    console.error('❌ Database initialization failed:', err);
+  }
+}
+
