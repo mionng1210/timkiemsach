@@ -11,6 +11,7 @@ export interface PathWaypoint {
 
 interface BookshelfSceneProps {
   racks: RackInfo[];
+  customFeatures?: import('../types').CustomFeature[];
   campus: string;
   highlightRack: number | null;
   highlightBay: number | null;
@@ -19,7 +20,10 @@ interface BookshelfSceneProps {
   onBayClick?: (rackNumber: number, bay: number, face: number) => void;
   onPathCalculated?: (waypoints: PathWaypoint[] | null) => void;
   isAdminMode?: boolean;
+  adminSubMode?: string | null;
   onAddRackAt?: (x: number, z: number) => void;
+  onAddFeatureAt?: (x: number, z: number) => void;
+  onFeatureClick?: (id: number) => void;
 }
 
 const ROW_SPACING_Z = 4.0;
@@ -28,9 +32,28 @@ const ROW_SPACING_Z = 4.0;
 const sideSegmentGeo = new THREE.BoxGeometry(0.1, 1, 1);
 const floorGeo = new THREE.BoxGeometry(3, 0.1, 1);
 const dividerGeo = new THREE.BoxGeometry(3, 0.05, 0.5);
-// Vùng click ẩn cho mỗi mặt bay (trước/sau)
-const clickGeo = new THREE.BoxGeometry(3, 5, 0.4);
 const clickMat = new THREE.MeshBasicMaterial({ visible: false });
+
+// Shared geometries and materials for labels to prevent GC churn
+const shelfBgGeo = new THREE.PlaneGeometry(0.9, 0.5);
+const shelfBgMat = new THREE.MeshBasicMaterial({ color: '#4f46e5' });
+const shelfFgGeo = new THREE.PlaneGeometry(0.84, 0.44);
+const shelfFgMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+
+const deweyBgGeo = new THREE.PlaneGeometry(1.6, 0.3);
+const deweyBgMat = new THREE.MeshBasicMaterial({ color: '#3498db' });
+const deweyFgGeo = new THREE.PlaneGeometry(1.54, 0.24);
+const deweyFgMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+
+const rackLabelBgGeo = new THREE.CircleGeometry(0.19, 32);
+const rackLabelBgMat = new THREE.MeshBasicMaterial({ color: '#4f46e5' });
+const rackLabelFgGeo = new THREE.CircleGeometry(0.16, 32);
+const rackLabelFgMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+
+const cbayLabelBgGeo = new THREE.CircleGeometry(0.28, 32);
+const cbayLabelFgGeo = new THREE.CircleGeometry(0.24, 32);
+
+const clickGeos = Array.from({ length: 10 }).map((_, i) => new THREE.BoxGeometry(3, i, 0.4));
 
 // Bảng màu xoay vòng cho các kệ: vàng → xanh lá → cam → xanh dương
 const RACK_COLORS = [
@@ -59,6 +82,9 @@ const woodMat = new THREE.MeshLambertMaterial({ color: '#6b4226' });
 
 // Components using raw meshes with cached materials
 function Bay({
+  SideWood,
+  FloorWood,
+  DividerWood,
   bayIndex,
   bayIdx,
   totalBays,
@@ -70,6 +96,9 @@ function Bay({
   isAdminMode,
   overrideOffsetX,
 }: {
+  SideWood?: any;
+  FloorWood?: any;
+  DividerWood?: any;
   bayIndex: number;
   bayIdx?: number;
   totalBays: number;
@@ -170,8 +199,12 @@ function Bay({
         const y = floorNum - 0.5;
         return (
           <group key={`sides-${i}`}>
-            <mesh geometry={sideSegmentGeo} material={activeIdx === 1 ? mat : woodMat} position={[0.13, y, -0.49]} />
-            <mesh geometry={sideSegmentGeo} material={woodMat} position={[3.17, y, -0.49]} />
+            {activeIdx === 1 ? (
+              <mesh geometry={sideSegmentGeo} material={mat} position={[0.13, y, -0.49]} />
+            ) : (
+              SideWood ? <SideWood position={[0.13, y, -0.49]} /> : <mesh geometry={sideSegmentGeo} material={woodMat} position={[0.13, y, -0.49]} />
+            )}
+            {SideWood ? <SideWood position={[3.17, y, -0.49]} /> : <mesh geometry={sideSegmentGeo} material={woodMat} position={[3.17, y, -0.49]} />}
           </group>
         );
       })}
@@ -196,9 +229,7 @@ function Bay({
         // Một tấm ván chỉ bị ẩn khi CẢ HAI ngăn (trên và dưới nó) đều bị ẩn
         if (compBelowHidden && compAboveHidden) return null;
 
-        return (
-          <mesh key={`floor-${k}`} geometry={floorGeo} material={woodMat} position={[1.67, y, -0.49]} />
-        );
+        return FloorWood ? <FloorWood key={`floor-${k}`} position={[1.67, y, -0.49]} /> : <mesh key={`floor-${k}`} geometry={floorGeo} material={woodMat} position={[1.67, y, -0.49]} />;
       })}
 
       {/* Dividers 1 to maxActiveFloor */}
@@ -206,22 +237,14 @@ function Bay({
         const floorNum = i + 1;
         if (hiddenFloors.has(floorNum)) return null;
         const y = floorNum - 0.7;
-        return (
-          <mesh key={`divider-${i}`} geometry={dividerGeo} material={woodMat} position={[1.67, y, -0.49]} rotation={[Math.PI / 2, 0, 0]} />
-        );
+        return DividerWood ? <DividerWood key={`divider-${i}`} position={[1.67, y, -0.49]} rotation={[Math.PI / 2, 0, 0]} /> : <mesh key={`divider-${i}`} geometry={dividerGeo} material={woodMat} position={[1.67, y, -0.49]} rotation={[Math.PI / 2, 0, 0]} />;
       })}
 
       {/* Biển báo và Tem (Giữ nguyên vì Text không instance dễ dàng) */}
       {face1Shelf && (
         <group position={[1.67, maxActiveFloor1, 0.015]}>
-          <mesh position={[0, 0, 0]}>
-            <planeGeometry args={[0.9, 0.5]} />
-            <meshBasicMaterial color="#4f46e5" />
-          </mesh>
-          <mesh position={[0, 0, 0.005]}>
-            <planeGeometry args={[0.84, 0.44]} />
-            <meshBasicMaterial color="#ffffff" />
-          </mesh>
+          <mesh geometry={shelfBgGeo} material={shelfBgMat} position={[0, 0, 0]} />
+          <mesh geometry={shelfFgGeo} material={shelfFgMat} position={[0, 0, 0.005]} />
           <Text position={[0, 0, 0.015]} fontSize={0.2} color="#1e1b4b" fontWeight="700" anchorX="center" anchorY="middle" letterSpacing={0.05}>
             {displayCode1}
           </Text>
@@ -230,14 +253,8 @@ function Bay({
 
       {face2Shelf && (
         <group position={[1.67, maxActiveFloor2, -0.995]} rotation={[0, Math.PI, 0]}>
-          <mesh position={[0, 0, 0]}>
-            <planeGeometry args={[0.9, 0.5]} />
-            <meshBasicMaterial color="#4f46e5" />
-          </mesh>
-          <mesh position={[0, 0, 0.005]}>
-            <planeGeometry args={[0.84, 0.44]} />
-            <meshBasicMaterial color="#ffffff" />
-          </mesh>
+          <mesh geometry={shelfBgGeo} material={shelfBgMat} position={[0, 0, 0]} />
+          <mesh geometry={shelfFgGeo} material={shelfFgMat} position={[0, 0, 0.005]} />
           <Text position={[0, 0, 0.015]} fontSize={0.2} color="#1e1b4b" fontWeight="700" anchorX="center" anchorY="middle" letterSpacing={0.05}>
             {displayCode2}
           </Text>
@@ -246,8 +263,8 @@ function Bay({
 
       {face1Shelf && (
         <group position={[1.67, (maxActiveFloor1 / 2.0) - 0.45, 0.015]}>
-          <mesh><planeGeometry args={[1.6, 0.3]} /><meshBasicMaterial color="#3498db" /></mesh>
-          <mesh position={[0, 0, 0.005]}><planeGeometry args={[1.54, 0.24]} /><meshBasicMaterial color="white" /></mesh>
+          <mesh geometry={deweyBgGeo} material={deweyBgMat} />
+          <mesh geometry={deweyFgGeo} material={deweyFgMat} position={[0, 0, 0.005]} />
           <Text position={[0, 0, 0.01]} fontSize={0.13} color="#2c3e50" fontWeight="600" anchorX="center" anchorY="middle">
             {`${face1Shelf.deweyStart.toFixed(3)} – ${face1Shelf.deweyEnd.toFixed(3)}`}
           </Text>
@@ -256,8 +273,8 @@ function Bay({
 
       {face2Shelf && (
         <group position={[1.67, (maxActiveFloor2 / 2.0) - 0.45, -0.995]} rotation={[0, Math.PI, 0]}>
-          <mesh><planeGeometry args={[1.6, 0.3]} /><meshBasicMaterial color="#3498db" /></mesh>
-          <mesh position={[0, 0, 0.005]}><planeGeometry args={[1.54, 0.24]} /><meshBasicMaterial color="white" /></mesh>
+          <mesh geometry={deweyBgGeo} material={deweyBgMat} />
+          <mesh geometry={deweyFgGeo} material={deweyFgMat} position={[0, 0, 0.005]} />
           <Text position={[0, 0, 0.01]} fontSize={0.13} color="#2c3e50" fontWeight="600" anchorX="center" anchorY="middle">
             {`${face2Shelf.deweyStart.toFixed(3)} – ${face2Shelf.deweyEnd.toFixed(3)}`}
           </Text>
@@ -267,27 +284,28 @@ function Bay({
       {/* Click zones */}
       {(face1Shelf || isAdminMode) && (
         <mesh material={clickMat} position={[1.65, maxActiveFloor1 / 2, -0.1]}
+          geometry={clickGeos[Math.min(9, Math.round(maxActiveFloor1))] || clickGeos[5]}
           onClick={(e) => { e.stopPropagation(); onBayClick?.(rackNumber, bayIndex, 1); }}
           onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
           onPointerOut={() => { document.body.style.cursor = 'default'; }}
-        >
-          <boxGeometry args={[3, maxActiveFloor1, 0.4]} />
-        </mesh>
+        />
       )}
       {(face2Shelf || isAdminMode) && (
         <mesh material={clickMat} position={[1.65, maxActiveFloor2 / 2, -0.88]}
+          geometry={clickGeos[Math.min(9, Math.round(maxActiveFloor2))] || clickGeos[5]}
           onClick={(e) => { e.stopPropagation(); onBayClick?.(rackNumber, bayIndex, 2); }}
           onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
           onPointerOut={() => { document.body.style.cursor = 'default'; }}
-        >
-          <boxGeometry args={[3, maxActiveFloor2, 0.4]} />
-        </mesh>
+        />
       )}
     </group>
   );
 }
 
 function Rack({
+  SideWood,
+  FloorWood,
+  DividerWood,
   rackNumber,
   isHighlighted,
   bays,
@@ -296,6 +314,9 @@ function Rack({
   campus,
   isAdminMode,
 }: {
+  SideWood?: any;
+  FloorWood?: any;
+  DividerWood?: any;
   rackNumber: number;
   isHighlighted: boolean;
   bays: number[];
@@ -349,21 +370,22 @@ function Rack({
       onPointerOut={() => { setHovered(false); document.body.style.cursor = 'default'; }}
     >
       {bays.map((b, i) => (
-        <Bay key={b} bayIndex={b} bayIdx={i + 1} totalBays={bays.length} mat={mat} rackNumber={rackNumber} shelves={shelves} onBayClick={onBayClick} campus={campus} isAdminMode={isAdminMode} />
+        <Bay key={b} SideWood={SideWood} FloorWood={FloorWood} DividerWood={DividerWood} bayIndex={b} bayIdx={i + 1} totalBays={bays.length} mat={mat} rackNumber={rackNumber} shelves={shelves} onBayClick={onBayClick} campus={campus} isAdminMode={isAdminMode} />
       ))}
 
       {/* Nhãn số kệ */}
       <group position={[labelXMin, labelY, -0.5]} rotation={[0, -Math.PI / 2, 0]}>
-        <mesh><circleGeometry args={[0.19, 32]} /><meshBasicMaterial color="#4f46e5" /></mesh>
-        <mesh position={[0, 0, 0.005]}><circleGeometry args={[0.16, 32]} /><meshBasicMaterial color="#ffffff" /></mesh>
+        <mesh geometry={rackLabelBgGeo} material={rackLabelBgMat} />
+        <mesh position={[0, 0, 0.005]} geometry={rackLabelFgGeo} material={rackLabelFgMat} />
         <Text position={[0, 0, 0.01]} fontSize={0.16} color="#1e1b4b" fontWeight="800" anchorX="center" anchorY="middle">{`${rackNumber}`}</Text>
       </group>
 
       <group position={[labelXMax, labelY, -0.5]} rotation={[0, Math.PI / 2, 0]}>
-        <mesh><circleGeometry args={[0.19, 32]} /><meshBasicMaterial color="#4f46e5" /></mesh>
-        <mesh position={[0, 0, 0.005]}><circleGeometry args={[0.16, 32]} /><meshBasicMaterial color="#ffffff" /></mesh>
+        <mesh geometry={rackLabelBgGeo} material={rackLabelBgMat} />
+        <mesh position={[0, 0, 0.005]} geometry={rackLabelFgGeo} material={rackLabelFgMat} />
         <Text position={[0, 0, 0.01]} fontSize={0.16} color="#1e1b4b" fontWeight="800" anchorX="center" anchorY="middle">{`${rackNumber}`}</Text>
       </group>
+
     </group>
   );
 }
@@ -474,6 +496,110 @@ function AdminGrid({ onAddRackAt, visible, racks, campus }: { onAddRackAt?: (x: 
   );
 }
 
+function FeatureGrid({
+  visible,
+  campus,
+  existingFeatures,
+  isAdminMode,
+  adminSubMode,
+  onAddFeatureAt,
+  onFeatureClick,
+  rackPositions
+}: {
+  visible: boolean;
+  campus: string;
+  existingFeatures: any[];
+  isAdminMode?: boolean;
+  adminSubMode?: string | null;
+  onAddFeatureAt?: (x: number, z: number) => void;
+  onFeatureClick?: (id: number) => void;
+  rackPositions?: { rackNumber: number, x: number, z: number }[];
+}) {
+  const [hoverPos, setHoverPos] = useState<[number, number] | null>(null);
+
+  const slots = useMemo(() => {
+    if (!rackPositions || rackPositions.length === 0) return [];
+    
+    const zValues = rackPositions.map(rp => rp.z);
+    const minZ = Math.min(...zValues);
+    const maxZ = Math.max(...zValues);
+    
+    const slotsArr = [];
+    const fixedX = campus === 'Thu Duc' ? -3 : -12;
+    
+    for (let z = minZ; z <= maxZ; z += 2.0) {
+      slotsArr.push({ x: fixedX, z: z });
+    }
+    return slotsArr;
+  }, [campus, rackPositions]);
+
+  const availableSlots = useMemo(() => {
+    return slots.filter(s => !existingFeatures.some(f => 
+      Math.abs(f.pos_x - s.x) < 2 && Math.abs(f.pos_z - s.z) < (f.length || 2) / 2
+    ));
+  }, [slots, existingFeatures]);
+
+  return (
+    <group>
+      {existingFeatures.map((feat) => (
+        <mesh
+          key={`feat-${feat.id}`}
+          position={[feat.pos_x, 0.6, feat.pos_z]}
+          rotation={[0, feat.rotation || 0, 0]}
+          castShadow receiveShadow
+          onClick={(e) => {
+            if (isAdminMode && adminSubMode === 'features') {
+              e.stopPropagation();
+              onFeatureClick?.(feat.id);
+            }
+          }}
+          onPointerMove={(e) => {
+            if (isAdminMode && adminSubMode === 'features') {
+              e.stopPropagation();
+              document.body.style.cursor = 'pointer';
+            }
+          }}
+          onPointerOut={() => {
+            if (isAdminMode && adminSubMode === 'features') {
+              document.body.style.cursor = 'default';
+            }
+          }}
+        >
+          <boxGeometry args={[feat.width || 1.2, 1.2, feat.length]} />
+          <meshLambertMaterial color="#8b4513" />
+        </mesh>
+      ))}
+      {visible && availableSlots.map((slot, i) => (
+        <mesh
+          key={`f-slot-${i}`}
+          position={[slot.x, 0.05, slot.z]}
+          onClick={(e) => {
+            e.stopPropagation();
+            onAddFeatureAt?.(slot.x, slot.z);
+          }}
+          onPointerMove={(e) => {
+            e.stopPropagation();
+            setHoverPos([slot.x, slot.z]);
+            document.body.style.cursor = 'pointer';
+          }}
+          onPointerOut={() => {
+            setHoverPos(null);
+            document.body.style.cursor = 'default';
+          }}
+        >
+          <boxGeometry args={[1.2, 0.1, 1.9]} />
+          <meshBasicMaterial
+            color={hoverPos && hoverPos[0] === slot.x && hoverPos[1] === slot.z ? "#4caf50" : "#e67e22"}
+            transparent
+            opacity={0.3}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 function FurnitureInstances({ aislePositions, wallRowPositions }: { aislePositions: [number, number, number][], wallRowPositions: [number, number, number][] }) {
   const tableHRef = useRef<THREE.InstancedMesh>(null);
   const tableVRef = useRef<THREE.InstancedMesh>(null);
@@ -526,8 +652,38 @@ function FurnitureInstances({ aislePositions, wallRowPositions }: { aislePositio
   );
 }
 
+function BookshelfMergedContainer({ children }: { children: (SideWood: any, FloorWood: any, DividerWood: any) => React.ReactNode }) {
+  const groupRef = useRef<THREE.Group>(null);
+  
+  useEffect(() => {
+    if (groupRef.current) {
+      groupRef.current.traverse((child) => {
+        // Fix for frustum culling making the instances disappear when the camera gets close
+        if ((child as any).isInstancedMesh) {
+          child.frustumCulled = false;
+        }
+      });
+    }
+  });
+
+  const staticMeshes = useMemo(() => [
+    new THREE.Mesh(sideSegmentGeo, woodMat),
+    new THREE.Mesh(floorGeo, woodMat),
+    new THREE.Mesh(dividerGeo, woodMat),
+  ], []);
+
+  return (
+    <group ref={groupRef}>
+      <Merged meshes={staticMeshes}>
+        {(SideWood, FloorWood, DividerWood) => children(SideWood, FloorWood, DividerWood)}
+      </Merged>
+    </group>
+  );
+}
+
 export default function BookshelfScene({
   racks,
+  customFeatures = [],
   campus,
   highlightRack,
   highlightBay,
@@ -536,7 +692,10 @@ export default function BookshelfScene({
   onBayClick,
   onPathCalculated,
   isAdminMode,
+  adminSubMode,
   onAddRackAt,
+  onAddFeatureAt,
+  onFeatureClick,
 }: BookshelfSceneProps) {
 
   const { sequentialRacks, customShelves, customBays } = useMemo(() => {
@@ -678,10 +837,7 @@ export default function BookshelfScene({
           [-58, 0, -12] as [number, number, number], [-70, 0, -12] as [number, number, number], [-82, 0, -12] as [number, number, number], [-94, 0, -12] as [number, number, number]
         ],
         wallRowPositions: [],
-        lowRackPositions: [
-          { pos: [-3, 0, 12], length: 16 },
-          { pos: [-3, 0, -8], length: 16 }
-        ]
+        lowRackPositions: [] // Now handled by customFeatures
       };
     }
   }, [campus, rackPositions]);
@@ -746,7 +902,33 @@ export default function BookshelfScene({
       const rack13 = rackPositions.find(r => r.rackNumber === 13);
       if (!rack13) return null;
       const bookshelfEntryX = -1.5;
-      const libraryGapZ = 2;
+      
+      let libraryGapZ = 2; // Default
+      const lowRacks = customFeatures.filter(f => f.type === 'low_rack');
+      if (lowRacks.length > 0) {
+        const ranges = lowRacks.map(f => {
+          const halfLen = (f.length || 0) / 2;
+          return { start: f.pos_z - halfLen, end: f.pos_z + halfLen };
+        });
+        ranges.sort((a, b) => a.start - b.start);
+        const merged = [ranges[0]];
+        for (let i = 1; i < ranges.length; i++) {
+          const last = merged[merged.length - 1];
+          if (ranges[i].start <= last.end + 0.1) {
+            last.end = Math.max(last.end, ranges[i].end);
+          } else {
+            merged.push(ranges[i]);
+          }
+        }
+        let maxGap = 0;
+        for (let i = 0; i < merged.length - 1; i++) {
+          const gapSize = merged[i+1].start - merged[i].end;
+          if (gapSize > maxGap) {
+            maxGap = gapSize;
+            libraryGapZ = merged[i].end + gapSize / 2;
+          }
+        }
+      }
 
       const path: PathWaypoint[] = [];
 
@@ -772,7 +954,7 @@ export default function BookshelfScene({
       path.push({ pos: new THREE.Vector3(shelfX, 0.05, aisleZ), msg: `Rẽ vào lối đi, tới vị trí sách!` });
       return path;
     }
-  }, [campus, highlightRack, highlightBay, highlightFace, rackPositions, startRackNumber, sequentialRacks, customShelves, features]);
+  }, [campus, highlightRack, highlightBay, highlightFace, rackPositions, startRackNumber, sequentialRacks, customShelves, features, customFeatures]);
 
   useEffect(() => {
     if (onPathCalculated) {
@@ -781,15 +963,17 @@ export default function BookshelfScene({
   }, [pathWaypoints, onPathCalculated]);
 
   return (
-    <group>
-      {rackPositions.map((rp) => {
-        if (rp.shelves.some(s => s.positionX != null && s.positionZ != null)) return null;
-        return (
-          <group key={rp.rackNumber} position={[rp.x, 0, rp.z]}>
-            <Rack rackNumber={rp.rackNumber} isHighlighted={rp.rackNumber === highlightRack} bays={rp.bays} shelves={rp.shelves} onBayClick={onBayClick} campus={campus} isAdminMode={isAdminMode} />
-          </group>
-        );
-      })}
+    <BookshelfMergedContainer>
+      {(SideWood, FloorWood, DividerWood) => (
+        <group>
+          {rackPositions.map((rp) => {
+            if (rp.shelves.some(s => s.positionX != null && s.positionZ != null)) return null;
+            return (
+              <group key={rp.rackNumber} position={[rp.x, 0, rp.z]}>
+                <Rack SideWood={SideWood} FloorWood={FloorWood} DividerWood={DividerWood} rackNumber={rp.rackNumber} isHighlighted={rp.rackNumber === highlightRack} bays={rp.bays} shelves={rp.shelves} onBayClick={onBayClick} campus={campus} isAdminMode={isAdminMode} />
+              </group>
+            );
+          })}
 
       {features && (
         <>
@@ -848,11 +1032,11 @@ export default function BookshelfScene({
           <group key={`cbay-${cbay.rackNumber}-${cbay.bay}`} position={[cbay.positionX, 0, cbay.positionZ]}>
             <group position={[1.65, 0, -0.49]}>
               <group position={[-1.65, 0, 0.49]}>
-                <Bay bayIndex={cbay.bay} bayIdx={bayIdx || undefined} totalBays={rack?.bays.length || 1} mat={mat} rackNumber={cbay.rackNumber} shelves={cbay.shelves} campus={campus} isAdminMode={isAdminMode} onBayClick={onBayClick} overrideOffsetX={0} />
+                <Bay SideWood={SideWood} FloorWood={FloorWood} DividerWood={DividerWood} bayIndex={cbay.bay} bayIdx={bayIdx || undefined} totalBays={rack?.bays.length || 1} mat={mat} rackNumber={cbay.rackNumber} shelves={cbay.shelves} campus={campus} isAdminMode={isAdminMode} onBayClick={onBayClick} overrideOffsetX={0} />
                 {bayIdx === 1 && (
                   <group position={[0.05, cbayLabelY, -0.5]} rotation={[0, -Math.PI / 2, 0]}>
-                    <mesh><circleGeometry args={[0.28, 32]} /><meshBasicMaterial color="#4f46e5" /></mesh>
-                    <mesh position={[0, 0, 0.005]}><circleGeometry args={[0.24, 32]} /><meshBasicMaterial color="#ffffff" /></mesh>
+                    <mesh geometry={cbayLabelBgGeo} material={rackLabelBgMat} />
+                    <mesh position={[0, 0, 0.005]} geometry={cbayLabelFgGeo} material={rackLabelFgMat} />
                     <Text position={[0, 0, 0.01]} fontSize={0.24} color="#1e1b4b" fontWeight="800" anchorX="center" anchorY="middle">{`${cbay.rackNumber}`}</Text>
                   </group>
                 )}
@@ -862,8 +1046,13 @@ export default function BookshelfScene({
         );
       })}
 
-      <AdminGrid visible={!!isAdminMode} onAddRackAt={onAddRackAt} racks={racks} campus={campus} />
+      {(!isAdminMode || adminSubMode === 'add') && (
+        <AdminGrid visible={!!isAdminMode} onAddRackAt={onAddRackAt} racks={racks} campus={campus} />
+      )}
+      <FeatureGrid visible={!!isAdminMode && adminSubMode === 'features'} campus={campus} existingFeatures={customFeatures} onAddFeatureAt={onAddFeatureAt} isAdminMode={isAdminMode} adminSubMode={adminSubMode} onFeatureClick={onFeatureClick} rackPositions={rackPositions} />
       {markerPos && <HighlightMarker position={markerPos} height={highlightShelfHeight} />}
-    </group>
+        </group>
+      )}
+    </BookshelfMergedContainer>
   );
 }
