@@ -903,7 +903,14 @@ export default function BookshelfScene({
       if (!rack13) return null;
       const bookshelfEntryX = -1.5;
       
-      let libraryGapZ = 2; // Default
+      let startZVal = 2; // Default
+      if (startRackNumber === -1) {
+        startZVal = features?.deskPos ? features.deskPos[2] : -22;
+      } else {
+        startZVal = features?.entrancePos ? features.entrancePos[2] : 26;
+      }
+
+      let libraryGapZ = aisleZ;
       const lowRacks = customFeatures.filter(f => f.type === 'low_rack');
       if (lowRacks.length > 0) {
         const ranges = lowRacks.map(f => {
@@ -920,13 +927,32 @@ export default function BookshelfScene({
             merged.push(ranges[i]);
           }
         }
-        let maxGap = 0;
-        for (let i = 0; i < merged.length - 1; i++) {
-          const gapSize = merged[i+1].start - merged[i].end;
-          if (gapSize > maxGap) {
-            maxGap = gapSize;
-            libraryGapZ = merged[i].end + gapSize / 2;
+        
+        let candidates: number[] = [];
+        if (merged.length > 1) {
+          for (let i = 0; i < merged.length - 1; i++) {
+            candidates.push((merged[i].end + merged[i+1].start) / 2);
           }
+        } else {
+          candidates = [startZVal, aisleZ];
+          for (let i = 0; i < merged.length; i++) {
+            candidates.push(merged[i].start - 1.0);
+            candidates.push(merged[i].end + 1.0);
+          }
+        }
+        
+        candidates = candidates.filter(c => !merged.some(r => c >= r.start - 0.5 && c <= r.end + 0.5));
+        
+        if (candidates.length > 0) {
+          candidates.sort((a, b) => {
+            const costA = Math.abs(a - startZVal) + Math.abs(a - aisleZ);
+            const costB = Math.abs(b - startZVal) + Math.abs(b - aisleZ);
+            if (Math.abs(costA - costB) < 0.1) {
+              return Math.abs(a - aisleZ) - Math.abs(b - aisleZ);
+            }
+            return costA - costB;
+          });
+          libraryGapZ = candidates[0];
         }
       }
 

@@ -1129,28 +1129,6 @@ export default function ViewerPanel({
         </div>
       )}
 
-      {isAdminMode && adminSubMode === 'features' && !editingFeature && (
-        <div className="admin-shelf-panel" style={{ zIndex: 10 }}>
-          <h3>🟫 Quản lý Khối 3D</h3>
-          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-            Nhấn vào các khối màu nâu trên bản đồ để sửa/xoá.
-          </p>
-          <button className="admin-btn update" style={{ width: '100%', marginBottom: '10px' }} onClick={() => {
-            setEditingFeature({
-              id: 0,
-              campus_id: 0,
-              type: 'low_rack',
-              pos_x: 0,
-              pos_z: 0,
-              length: 16,
-              width: 1.2,
-              rotation: 0
-            });
-          }}>
-            ➕ Thêm Khối Mới
-          </button>
-        </div>
-      )}
 
       {isAdminMode && adminSubMode === 'features' && editingFeature && (
         <div
