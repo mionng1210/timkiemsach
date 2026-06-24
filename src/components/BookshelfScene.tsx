@@ -435,7 +435,15 @@ function EntranceArea({ position, isDouble = false }: { position: [number, numbe
       <mesh position={[isDouble ? -3.0 : -1.5, 2.5, 0.05]}><boxGeometry args={[0.2, 5, 0.3]} /><meshLambertMaterial color="#4b6584" /></mesh>
       <mesh position={[isDouble ? 3.0 : 1.5, 2.5, 0.05]}><boxGeometry args={[0.2, 5, 0.3]} /><meshLambertMaterial color="#4b6584" /></mesh>
       <mesh position={[0, 5, 0.05]}><boxGeometry args={[isDouble ? 6.2 : 3.2, 0.2, 0.3]} /><meshLambertMaterial color="#4b6584" /></mesh>
-      <group position={[0, 5.5, 0]}><Text fontSize={isDouble ? 0.8 : 0.6} color="#e67e22" fontWeight="bold" anchorX="center">CỬA RA VÀO</Text></group>
+      <group position={[0, 5.5, 0]}>
+        {/* Bảng hiệu */}
+        <mesh position={[0, 0.3, 0]}>
+          <boxGeometry args={[isDouble ? 5.0 : 3.0, 1.0, 0.1]} />
+          <meshLambertMaterial color="#34495e" />
+        </mesh>
+        <Text position={[0, 0.3, 0.06]} fontSize={isDouble ? 0.6 : 0.45} color="white" fontWeight="bold" anchorX="center" anchorY="middle">CỬA RA VÀO</Text>
+        <Text position={[0, 0.3, -0.06]} rotation={[0, Math.PI, 0]} fontSize={isDouble ? 0.6 : 0.45} color="white" fontWeight="bold" anchorX="center" anchorY="middle">CỬA RA VÀO</Text>
+      </group>
     </group>
   );
 }
