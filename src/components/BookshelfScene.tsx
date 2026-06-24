@@ -409,9 +409,9 @@ function LowDisplayRack({ position, length = 6 }: { position: [number, number, n
   );
 }
 
-function LibrarianDesk({ position }: { position: [number, number, number] }) {
+function LibrarianDesk({ position, rotation }: { position: [number, number, number], rotation?: [number, number, number] }) {
   return (
-    <group position={position}>
+    <group position={position} rotation={rotation || [0, 0, 0]}>
       <mesh position={[0, 0.8, 0]}><boxGeometry args={[18, 0.1, 2]} /><meshLambertMaterial color="#8b4513" /></mesh>
       {[-8.8, 8.8, -3, 3].map((x, i) => (
         <mesh key={i} position={[x, 0.4, 0]}><boxGeometry args={[0.2, 0.8, 1.8]} /><meshLambertMaterial color="#5d2e0a" /></mesh>
@@ -422,6 +422,8 @@ function LibrarianDesk({ position }: { position: [number, number, number] }) {
       <group position={[0, 1.2, 1.05]}>
         <mesh><boxGeometry args={[6, 0.6, 0.1]} /><meshBasicMaterial color="#34495e" /></mesh>
         <Text position={[0, 0, 0.06]} fontSize={0.35} color="white" fontWeight="bold" anchorX="center" anchorY="middle">QUẦY THỦ THƯ</Text>
+        {/* Thêm chữ ở mặt sau luôn cho xịn */}
+        <Text position={[0, 0, -0.06]} rotation={[0, Math.PI, 0]} fontSize={0.35} color="white" fontWeight="bold" anchorX="center" anchorY="middle">QUẦY THỦ THƯ</Text>
       </group>
     </group>
   );
@@ -816,6 +818,7 @@ export default function BookshelfScene({
 
       return {
         deskPos: [-12, 0, rack2.z + 10] as [number, number, number],
+        deskRotation: [0, Math.PI, 0] as [number, number, number],
         entrancePos: [-31.6, 0, rack2.z + 10] as [number, number, number],
         rack1Pos: [0, 0, rack2.z + 4] as [number, number, number],
         aislePositions: aisleZs.flatMap(z => [
@@ -831,6 +834,7 @@ export default function BookshelfScene({
 
       return {
         deskPos: [-40.5, 0, -22] as [number, number, number],
+        deskRotation: [0, 0, 0] as [number, number, number],
         entrancePos: [-40.5, 0, 26] as [number, number, number],
         rack1Pos: null,
         aislePositions: [
@@ -1016,7 +1020,7 @@ export default function BookshelfScene({
               <Rack rackNumber={1} isHighlighted={false} bays={[1, 2, 3, 4, 5]} shelves={[]} campus={campus} />
             </group>
           )}
-          {features.deskPos && <LibrarianDesk position={features.deskPos} />}
+          {features.deskPos && <LibrarianDesk position={features.deskPos} rotation={features.deskRotation} />}
           <EntranceArea position={features.entrancePos} isDouble={campus === 'Thu Duc'} />
           {campus === 'Thu Duc' && features.lowRackPositions && features.lowRackPositions.map((item: any, i) => (
             <LowDisplayRack key={i} position={item.pos} length={item.length} />
