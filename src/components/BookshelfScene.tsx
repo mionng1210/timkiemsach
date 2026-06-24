@@ -901,7 +901,8 @@ export default function BookshelfScene({
         path.push({ pos: new THREE.Vector3(mainCorridorX, 0.05, startAisleZ), msg: `Bắt đầu từ lối đi kệ số ${startRackNumber}` });
       } else {
         const startX = -31.6;
-        const startZ = rack2.z + 10;
+        // Lùi vào trong thư viện 1.5m để tránh đường nét đứt chạm thẳng vào mặt kính cửa
+        const startZ = rack2.z + 10 - 1.5;
         path.push({ pos: new THREE.Vector3(startX, 0.05, startZ), msg: 'Cửa ra vào' });
         path.push({ pos: new THREE.Vector3(startX, 0.05, frontOfDeskZ), msg: 'Tiến vào sảnh chính' });
         path.push({ pos: new THREE.Vector3(mainCorridorX, 0.05, frontOfDeskZ), msg: 'Tránh quầy thủ thư, rẽ vào hành lang' });
@@ -973,19 +974,25 @@ export default function BookshelfScene({
       if (startRackNumber === -1) {
         const deskX = features?.deskPos ? features.deskPos[0] : -40.5;
         const deskZ = features?.deskPos ? features.deskPos[2] : -22;
+        const outsideBrownX = -5.0;
 
         path.push({ pos: new THREE.Vector3(deskX, 0.05, deskZ), msg: 'Xuất phát từ quầy thủ thư' });
-        path.push({ pos: new THREE.Vector3(deskX, 0.05, libraryGapZ), msg: 'Đi thẳng dọc theo hành lang chính' });
-        path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Rẽ vào hành lang giữa kệ và bàn ghế' });
+        path.push({ pos: new THREE.Vector3(outsideBrownX, 0.05, deskZ), msg: 'Đi ngang qua khu vực sảnh' });
+        path.push({ pos: new THREE.Vector3(outsideBrownX, 0.05, libraryGapZ), msg: 'Đi dọc theo vách ngăn màu nâu' });
+        path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Đi qua khoảng trống giữa các vách ngăn' });
       } else if (startRack) {
         const startAisleZ = startRack.z + 2.0;
         path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, startAisleZ), msg: `Bắt đầu từ lối đi kệ số ${startRackNumber}` });
       } else {
         const startX = features?.entrancePos ? features.entrancePos[0] : -40.5;
-        const startZ = features?.entrancePos ? features.entrancePos[2] : 26;
+        // Lùi vào trong thư viện 1.5m để đường dẫn không bị dính ra ngoài cửa
+        const startZ = features?.entrancePos ? features.entrancePos[2] - 1.5 : 24.5;
+        const outsideBrownX = -5.0;
+
         path.push({ pos: new THREE.Vector3(startX, 0.05, startZ), msg: 'Bắt đầu từ cửa vào' });
-        path.push({ pos: new THREE.Vector3(startX, 0.05, libraryGapZ), msg: 'Đi thẳng vào sảnh trung tâm' });
-        path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Rẽ vào hành lang kệ sách' });
+        path.push({ pos: new THREE.Vector3(outsideBrownX, 0.05, startZ), msg: 'Đi ngang qua sảnh để tới vách ngăn' });
+        path.push({ pos: new THREE.Vector3(outsideBrownX, 0.05, libraryGapZ), msg: 'Đi dọc theo vách ngăn màu nâu' });
+        path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Đi qua khoảng trống giữa các vách ngăn' });
       }
 
       path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, aisleZ), msg: `Tới lối đi của kệ số ${highlightRack}` });

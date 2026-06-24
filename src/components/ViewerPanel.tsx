@@ -1538,28 +1538,15 @@ function FirstPersonCamera({
     
     let dirX: number = 0, dirZ: number = 0;
     if (loIdxD === hiIdxD) {
-      if (walkDir < 0 && hiIdxD > 0) {
-        dirX = waypoints[hiIdxD - 1].pos.x - waypoints[hiIdxD].pos.x;
-        dirZ = waypoints[hiIdxD - 1].pos.z - waypoints[hiIdxD].pos.z;
-      } else {
-        const nextIdx = Math.min(waypoints.length - 1, hiIdxD + 1);
-        dirX = waypoints[nextIdx].pos.x - waypoints[hiIdxD].pos.x;
-        dirZ = waypoints[nextIdx].pos.z - waypoints[hiIdxD].pos.z;
-      }
-    } else if (walkDir > 0 && tForDir > 0.92 && hiIdxD + 1 < waypoints.length) {
+      const nextIdx = Math.min(waypoints.length - 1, hiIdxD + 1);
+      dirX = waypoints[nextIdx].pos.x - waypoints[hiIdxD].pos.x;
+      dirZ = waypoints[nextIdx].pos.z - waypoints[hiIdxD].pos.z;
+    } else if (tForDir > 0.92 && hiIdxD + 1 < waypoints.length) {
       dirX = waypoints[hiIdxD + 1].pos.x - waypoints[hiIdxD].pos.x;
       dirZ = waypoints[hiIdxD + 1].pos.z - waypoints[hiIdxD].pos.z;
-    } else if (walkDir < 0 && tForDir < 0.08 && loIdxD > 0) {
-      dirX = waypoints[loIdxD - 1].pos.x - waypoints[loIdxD].pos.x;
-      dirZ = waypoints[loIdxD - 1].pos.z - waypoints[loIdxD].pos.z;
     } else {
-      if (walkDir < 0) {
-        dirX = waypoints[loIdxD].pos.x - waypoints[hiIdxD].pos.x;
-        dirZ = waypoints[loIdxD].pos.z - waypoints[hiIdxD].pos.z;
-      } else {
-        dirX = waypoints[hiIdxD].pos.x - waypoints[loIdxD].pos.x;
-        dirZ = waypoints[hiIdxD].pos.z - waypoints[loIdxD].pos.z;
-      }
+      dirX = waypoints[hiIdxD].pos.x - waypoints[loIdxD].pos.x;
+      dirZ = waypoints[hiIdxD].pos.z - waypoints[loIdxD].pos.z;
     }
 
     // 2. Pause logic
