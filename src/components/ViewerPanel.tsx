@@ -46,6 +46,42 @@ export default function ViewerPanel({
   const [userStartRack, setUserStartRack] = useState<number | null>(null);
   const [isPathOverview, setIsPathOverview] = useState(false);
 
+  const significantSteps = useMemo(() => {
+    if (!guideWaypoints || guideWaypoints.length === 0) return [];
+    const MIN_DIST = 10.0;
+    const steps = [0];
+    
+    for (let i = 1; i < guideWaypoints.length - 2; i++) {
+      const nextDist = guideWaypoints[i].pos.distanceTo(guideWaypoints[i+1].pos);
+      if (nextDist >= MIN_DIST) {
+        steps.push(i);
+      }
+    }
+    
+    if (guideWaypoints.length > 2) {
+      if (!steps.includes(guideWaypoints.length - 2)) {
+        steps.push(guideWaypoints.length - 2);
+      }
+    }
+    
+    if (guideWaypoints.length > 1) {
+      if (!steps.includes(guideWaypoints.length - 1)) {
+        steps.push(guideWaypoints.length - 1);
+      }
+    }
+    
+    return steps.sort((a, b) => a - b);
+  }, [guideWaypoints]);
+
+  const currentSigIndex = useMemo(() => {
+    let idx = significantSteps.indexOf(currentGuideStep);
+    if (idx === -1) {
+      idx = significantSteps.findIndex(s => s >= currentGuideStep);
+      if (idx === -1) idx = significantSteps.length - 1;
+    }
+    return Math.max(0, idx);
+  }, [significantSteps, currentGuideStep]);
+
   // Authentication state — luôn yêu cầu đăng nhập lại khi tải trang
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -1291,7 +1327,7 @@ export default function ViewerPanel({
       {isGuideMode && guideWaypoints && (
         <div className="guide-controls-overlay">
           <div className="guide-step-info">
-            Bước {currentGuideStep + 1} / {guideWaypoints.length}
+            Bước {currentSigIndex + 1} / {significantSteps.length}
             <div className="guide-step-msg">
               {guideWaypoints[currentGuideStep].msg}
             </div>
@@ -1299,15 +1335,21 @@ export default function ViewerPanel({
           <div className="guide-nav-btns">
             <button
               className="guide-btn guide-btn-back"
-              onClick={() => setCurrentGuideStep(Math.max(0, currentGuideStep - 1))}
-              disabled={currentGuideStep === 0}
+              onClick={() => {
+                const nextSigIdx = Math.max(0, currentSigIndex - 1);
+                setCurrentGuideStep(significantSteps[nextSigIdx]);
+              }}
+              disabled={currentSigIndex === 0}
             >
               ⬅️ Lùi lại
             </button>
             <button
               className="guide-btn guide-btn-next"
-              onClick={() => setCurrentGuideStep(Math.min(guideWaypoints.length - 1, currentGuideStep + 1))}
-              disabled={currentGuideStep === guideWaypoints.length - 1}
+              onClick={() => {
+                const nextSigIdx = Math.min(significantSteps.length - 1, currentSigIndex + 1);
+                setCurrentGuideStep(significantSteps[nextSigIdx]);
+              }}
+              disabled={currentSigIndex === significantSteps.length - 1}
             >
               Đi tiếp ➡️
             </button>
@@ -1484,30 +1526,93 @@ function FirstPersonCamera({
   useFrame((_, delta) => {
     if (!waypoints || waypoints.length === 0) return;
 
-    // Tốc độ đi bộ cố định (đơn vị/giây) — mọi đoạn đều đi cùng tốc độ
     const WALK_SPEED = 16;
     const stepDiff = currentStep - lerpStepRef.current;
+    const walkDir = Math.sign(stepDiff);
 
-    if (Math.abs(stepDiff) < 0.005) {
-      lerpStepRef.current = currentStep;
+    // 1. Calculate desired look direction BEFORE moving
+    const lsForDir = lerpStepRef.current;
+    const loIdxD = Math.max(0, Math.min(waypoints.length - 1, Math.floor(lsForDir)));
+    const hiIdxD = Math.max(0, Math.min(waypoints.length - 1, Math.ceil(lsForDir)));
+    const tForDir = lsForDir - loIdxD;
+    
+    let dirX: number = 0, dirZ: number = 0;
+    if (loIdxD === hiIdxD) {
+      if (walkDir < 0 && hiIdxD > 0) {
+        dirX = waypoints[hiIdxD - 1].pos.x - waypoints[hiIdxD].pos.x;
+        dirZ = waypoints[hiIdxD - 1].pos.z - waypoints[hiIdxD].pos.z;
+      } else {
+        const nextIdx = Math.min(waypoints.length - 1, hiIdxD + 1);
+        dirX = waypoints[nextIdx].pos.x - waypoints[hiIdxD].pos.x;
+        dirZ = waypoints[nextIdx].pos.z - waypoints[hiIdxD].pos.z;
+      }
+    } else if (walkDir > 0 && tForDir > 0.92 && hiIdxD + 1 < waypoints.length) {
+      dirX = waypoints[hiIdxD + 1].pos.x - waypoints[hiIdxD].pos.x;
+      dirZ = waypoints[hiIdxD + 1].pos.z - waypoints[hiIdxD].pos.z;
+    } else if (walkDir < 0 && tForDir < 0.08 && loIdxD > 0) {
+      dirX = waypoints[loIdxD - 1].pos.x - waypoints[loIdxD].pos.x;
+      dirZ = waypoints[loIdxD - 1].pos.z - waypoints[loIdxD].pos.z;
     } else {
-      // Tính khoảng cách vật lý của đoạn đang đi
-      const fromIdx = Math.max(0, Math.min(waypoints.length - 1, Math.floor(lerpStepRef.current)));
-      const toIdx = Math.max(0, Math.min(waypoints.length - 1, Math.ceil(lerpStepRef.current)));
-      const actualTo = toIdx === fromIdx ? Math.min(waypoints.length - 1, fromIdx + 1) : toIdx;
-      const dx = waypoints[actualTo].pos.x - waypoints[fromIdx].pos.x;
-      const dz = waypoints[actualTo].pos.z - waypoints[fromIdx].pos.z;
-      const segDist = Math.sqrt(dx * dx + dz * dz);
-
-      // Bước tiến = tốc độ cố định / khoảng cách đoạn → tốc độ vật lý đều
-      const stepRate = segDist > 0.1 ? WALK_SPEED / segDist : WALK_SPEED;
-      lerpStepRef.current += Math.sign(stepDiff) * Math.min(Math.abs(stepDiff), stepRate * delta);
+      if (walkDir < 0) {
+        dirX = waypoints[loIdxD].pos.x - waypoints[hiIdxD].pos.x;
+        dirZ = waypoints[loIdxD].pos.z - waypoints[hiIdxD].pos.z;
+      } else {
+        dirX = waypoints[hiIdxD].pos.x - waypoints[loIdxD].pos.x;
+        dirZ = waypoints[hiIdxD].pos.z - waypoints[loIdxD].pos.z;
+      }
     }
 
+    // 2. Pause logic
+    const camDir = new THREE.Vector3();
+    camera.getWorldDirection(camDir);
+    camDir.y = 0;
+    if (camDir.lengthSq() > 0.001) camDir.normalize();
+
+    let allowMove = true;
+    const isAtCorner = Math.abs(lsForDir - Math.round(lsForDir)) < 0.005;
+    const isBoundary = Math.round(lsForDir) === 0 || Math.round(lsForDir) >= waypoints.length - 2;
+    if (isAtCorner && !isBoundary && Math.abs(stepDiff) > 0.005) {
+      const targetDir = new THREE.Vector3(dirX, 0, dirZ);
+      if (targetDir.lengthSq() > 0.001) {
+        targetDir.normalize();
+        if (camDir.angleTo(targetDir) > 0.15) {
+          allowMove = false;
+        }
+      }
+    }
+
+    // 3. Move logic
+    if (allowMove) {
+      if (Math.abs(stepDiff) < 0.005) {
+        lerpStepRef.current = currentStep;
+      } else {
+        const actualFrom = Math.max(0, Math.min(waypoints.length - 1, Math.floor(lerpStepRef.current)));
+        const actualToIdx = Math.max(0, Math.min(waypoints.length - 1, Math.ceil(lerpStepRef.current)));
+        const actualTo = actualToIdx === actualFrom ? Math.min(waypoints.length - 1, actualFrom + 1) : actualToIdx;
+        const dxTo = waypoints[actualTo].pos.x - waypoints[actualFrom].pos.x;
+        const dzTo = waypoints[actualTo].pos.z - waypoints[actualFrom].pos.z;
+        const segDist = Math.sqrt(dxTo * dxTo + dzTo * dzTo);
+
+        const stepRate = segDist > 0.1 ? WALK_SPEED / segDist : WALK_SPEED;
+        let nextStep = lerpStepRef.current + walkDir * Math.min(Math.abs(stepDiff), stepRate * delta);
+        
+        if (walkDir > 0) {
+          const nextInt = Math.floor(nextStep);
+          if (nextInt > Math.floor(lerpStepRef.current) && nextInt < currentStep) nextStep = nextInt;
+        } else {
+          const nextInt = Math.ceil(nextStep);
+          if (nextInt < Math.ceil(lerpStepRef.current) && nextInt > currentStep) nextStep = nextInt;
+        }
+        lerpStepRef.current = nextStep;
+      }
+    }
+
+    // 4. Update Positions
     const ls = lerpStepRef.current;
     const loIdx = Math.max(0, Math.min(waypoints.length - 1, Math.floor(ls)));
     const hiIdx = Math.max(0, Math.min(waypoints.length - 1, Math.ceil(ls)));
     const t = ls - loIdx;
+    
     const posLo = waypoints[loIdx].pos;
     const posHi = waypoints[hiIdx].pos;
     const tp = targetPos.current;
@@ -1525,7 +1630,6 @@ function FirstPersonCamera({
         const pushBackDir = Math.sign(tp.z - finalLookAt.z);
         tp.z += pushBackDir * 1.2;
       } else {
-        // Thu Duc
         tp.x -= 0.7; tp.y = 2.5;
         const pushBackDir = Math.sign(tp.z - finalLookAt.z);
         tp.z += pushBackDir * 1.2;
@@ -1533,28 +1637,11 @@ function FirstPersonCamera({
     }
 
     const lp = lookAtPos.current;
-    if (ls >= waypoints.length - 2.2) lp.lerp(finalLookAt, 0.4);
-    else {
-      let dirX: number, dirZ: number;
-
-      if (loIdx === hiIdx) {
-        // Đứng tại waypoint → nhìn theo hướng đoạn tiếp theo
-        const nextIdx = Math.min(waypoints.length - 1, hiIdx + 1);
-        dirX = waypoints[nextIdx].pos.x - waypoints[hiIdx].pos.x;
-        dirZ = waypoints[nextIdx].pos.z - waypoints[hiIdx].pos.z;
-      } else if (t > 0.92 && hiIdx + 1 < waypoints.length) {
-        // Sắp đến khúc cua → quay sang hướng đoạn thẳng tiếp theo
-        dirX = waypoints[hiIdx + 1].pos.x - waypoints[hiIdx].pos.x;
-        dirZ = waypoints[hiIdx + 1].pos.z - waypoints[hiIdx].pos.z;
-      } else {
-        // Đang đi thẳng → nhìn thẳng theo hướng đoạn hiện tại
-        dirX = waypoints[hiIdx].pos.x - waypoints[loIdx].pos.x;
-        dirZ = waypoints[hiIdx].pos.z - waypoints[loIdx].pos.z;
-      }
-
+    if (walkDir >= 0 && ls >= waypoints.length - 2.2) {
+      lp.lerp(finalLookAt, 0.4);
+    } else {
       const dirLen = Math.sqrt(dirX * dirX + dirZ * dirZ);
       if (dirLen > 0.01) {
-        // Đặt điểm nhìn xa phía trước theo hướng đi thẳng
         const targetX = tp.x + (dirX / dirLen) * 15;
         const targetZ = tp.z + (dirZ / dirLen) * 15;
         lp.x += (targetX - lp.x) * 0.1;
