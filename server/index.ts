@@ -198,16 +198,16 @@ app.delete('/api/admin/racks/:rackNumber/bays/:bay', async (req, res) => {
 
 // ===== Admin Custom Features =====
 app.post('/api/admin/features', async (req, res) => {
-  const success = await addCustomFeature(req.body);
-  if (success) return res.json({ success: true });
-  return res.status(500).json({ error: 'Failed to add custom feature' });
+  const result = await addCustomFeature(req.body);
+  if (result.success) return res.json({ success: true });
+  return res.status(400).json({ error: result.error || 'Failed to add custom feature' });
 });
 
 app.put('/api/admin/features/:id', async (req, res) => {
   const id = parseInt(req.params.id);
-  const success = await updateCustomFeature(id, req.body);
-  if (success) return res.json({ success: true });
-  return res.status(500).json({ error: 'Failed to update custom feature' });
+  const result = await updateCustomFeature(id, req.body);
+  if (result.success) return res.json({ success: true });
+  return res.status(400).json({ error: result.error || 'Failed to update custom feature' });
 });
 
 app.delete('/api/admin/features/:id', async (req, res) => {

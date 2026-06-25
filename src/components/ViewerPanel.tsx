@@ -607,7 +607,52 @@ export default function ViewerPanel({
       }
     }
   }, [editingShelf, addingShelfPos]);
+  const maxZ = useMemo(() => {
+    if (racks.length === 0) return 40;
+    const ROW_SPACING_Z = 4.0;
+    const sorted = [...racks].sort((a, b) => {
+      if (campus === 'Thu Duc') return b.rackNumber - a.rackNumber;
+      return a.rackNumber - b.rackNumber;
+    });
+    const totalRacks = sorted.length;
+    const zValues = sorted.map((rack, index) => {
+      const firstShelf = rack.shelves.find(s => s.positionZ != null);
+      return Number(firstShelf?.positionZ ?? -(index - totalRacks / 2) * ROW_SPACING_Z);
+    });
+    return Math.max(...zValues);
+  }, [racks, campus]);
 
+  const maxCells = useMemo(() => {
+    if (!editingFeature) return 1;
+    
+    // Tọa độ bắt đầu vật lý của khối
+    const zStart = editingFeature.pos_z - editingFeature.length / 2;
+
+    // Tính số lượng ô tối đa theo giới hạn sàn (Z tối đa của sàn là maxZ + 1.0)
+    const maxZLimit = maxZ + 1.0;
+    const N_max_grid = Math.max(1, Math.floor((maxZLimit - zStart) / 2.0));
+
+    // Tìm vật cản phía trước (các khối khác cùng cột X và có điểm bắt đầu > zStart)
+    const obstacles = features.filter(f => {
+      if (f.id === editingFeature.id) return false;
+      // Cùng cột X (khoảng cách X < 2.0)
+      const sameCol = Math.abs(f.pos_x - editingFeature.pos_x) < 2.0;
+      // Ở phía trước (Z bắt đầu của vật cản lớn hơn zStart)
+      const obstacleStart = f.pos_z - f.length / 2;
+      return sameCol && obstacleStart > zStart;
+    });
+
+    let N_max = N_max_grid;
+    obstacles.forEach(f => {
+      const obstacleStart = f.pos_z - f.length / 2;
+      const limit = Math.floor((obstacleStart - zStart) / 2.0);
+      if (limit > 0 && limit < N_max) {
+        N_max = limit;
+      }
+    });
+
+    return Math.max(1, N_max);
+  }, [editingFeature, features, maxZ]);
 
   return (
     <div className="viewer-panel">
@@ -714,6 +759,7 @@ export default function ViewerPanel({
             onPathCalculated={setGuideWaypoints}
             isAdminMode={isAdminMode}
             adminSubMode={adminSubMode}
+            editingFeatureId={editingFeature?.id || null}
             onFeatureClick={(featureId) => {
               if (adminSubMode === 'features') {
                 const feat = features.find(f => f.id === featureId);
@@ -962,14 +1008,9 @@ export default function ViewerPanel({
             }}>
               Lưu thay đổi
             </button>
-            <div className="admin-actions-row">
-              <button className="admin-btn delete-shelf" onClick={() => handleDeleteShelf(editingShelf.shelfId)}>
-                Xóa ô này
-              </button>
-              <button className="admin-btn delete-bay" onClick={() => handleDeleteBay(editingShelf.rackNumber, editingShelf.bay)}>
-                Xóa cả dãy
-              </button>
-            </div>
+            <button className="admin-btn delete-bay" onClick={() => handleDeleteBay(editingShelf.rackNumber, editingShelf.bay)}>
+              Xóa cả kệ
+            </button>
             <button className="admin-btn cancel" onClick={() => setEditingShelf(null)}>
               Đóng
             </button>
@@ -1169,7 +1210,7 @@ export default function ViewerPanel({
       {isAdminMode && adminSubMode === 'features' && editingFeature && (
         <div
           className="admin-shelf-panel"
-          key={`feature-${editingFeature.id}`}
+          key={`feature-${editingFeature.id}-${editingFeature.pos_x}-${editingFeature.pos_z}-${editingFeature.length}`}
         >
           <h3>🟫 {editingFeature.id ? 'Sửa Khối' : 'Thêm Khối Mới'}</h3>
           <div className="admin-form-group">
@@ -1181,43 +1222,82 @@ export default function ViewerPanel({
             <input type="number" id="featX" defaultValue={editingFeature.pos_x} step="0.5" readOnly style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
           </div>
           <div className="admin-form-group">
-            <label>Z đầu (bắt đầu):</label>
-            <input type="number" id="featZStart" defaultValue={editingFeature.pos_z - (editingFeature.length / 2)} step="0.5" onChange={() => {
-              const start = parseFloat((document.getElementById('featZStart') as HTMLInputElement).value) || 0;
-              const end = parseFloat((document.getElementById('featZEnd') as HTMLInputElement).value) || 0;
-              const lenEl = document.getElementById('featLengthDisplay') as HTMLInputElement;
-              if (lenEl) lenEl.value = Math.abs(end - start).toString();
-            }} />
+            <label>Toạ độ Z (bắt đầu):</label>
+            <input 
+              type="number" 
+              id="featZ" 
+              defaultValue={editingFeature.pos_z - editingFeature.length / 2} 
+              readOnly 
+              style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} 
+            />
           </div>
           <div className="admin-form-group">
-            <label>Z cuối (kết thúc):</label>
-            <input type="number" id="featZEnd" defaultValue={editingFeature.pos_z + (editingFeature.length / 2)} step="0.5" onChange={() => {
-              const start = parseFloat((document.getElementById('featZStart') as HTMLInputElement).value) || 0;
-              const end = parseFloat((document.getElementById('featZEnd') as HTMLInputElement).value) || 0;
-              const lenEl = document.getElementById('featLengthDisplay') as HTMLInputElement;
-              if (lenEl) lenEl.value = Math.abs(end - start).toString();
-            }} />
-          </div>
-          <div className="admin-form-group">
-            <label>Chiều dài (tự động):</label>
-            <input type="number" id="featLengthDisplay" defaultValue={editingFeature.length} readOnly style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+            <label>Chiều dài (số ô):</label>
+            <select 
+              id="featLengthCells" 
+              defaultValue={Math.round(editingFeature.length / 2.0)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                borderRadius: '4px',
+                border: '1px solid var(--border)',
+                backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                color: 'var(--text-primary)',
+                fontSize: '14px'
+              }}
+            >
+              {(() => {
+                const currentCells = Math.round(editingFeature.length / 2.0);
+                const optionsCount = Math.max(maxCells, currentCells);
+                return Array.from({ length: optionsCount }).map((_, i) => (
+                  <option key={i + 1} value={i + 1}>
+                    {i + 1} ô ({ (i + 1) * 2 }m)
+                  </option>
+                ));
+              })()}
+            </select>
           </div>
           <div className="admin-actions">
             <button className="admin-btn update" onClick={async () => {
               const type = (document.getElementById('featType') as HTMLInputElement).value;
               const posX = parseFloat((document.getElementById('featX') as HTMLInputElement).value);
-              const zStart = parseFloat((document.getElementById('featZStart') as HTMLInputElement).value);
-              const zEnd = parseFloat((document.getElementById('featZEnd') as HTMLInputElement).value);
-              
-              const length = Math.abs(zEnd - zStart);
-              const posZ = (zStart + zEnd) / 2;
+              const zStart = parseFloat((document.getElementById('featZ') as HTMLInputElement).value);
+              const cellSelect = document.getElementById('featLengthCells') as HTMLSelectElement;
+              const cellCount = parseInt(cellSelect.value) || 1;
+
+              // Tính toán lại chiều dài và tâm Z mới
+              const length = cellCount * 2.0;
+              const posZ = zStart + cellCount * 1.0;
+
+              // Kiểm tra đè lấp phía Client
+              const isOverlapping = features.some(f => {
+                if (f.id === editingFeature.id) return false;
+                // Cùng cột (khoảng cách X < 2.0)
+                const sameCol = Math.abs(f.pos_x - posX) < 2.0;
+                // Đè lấp Z
+                const overlapZ = Math.abs(f.pos_z - posZ) < (f.length + length) / 2;
+                return sameCol && overlapZ;
+              });
+
+              if (isOverlapping) {
+                alert('Không thể lưu: Vị trí này đè lên một khối khác đã có!');
+                return;
+              }
               
               const payload = { campus, type, posX, posZ, length, width: 1.2, rotation: 0 };
+              let saveRes;
               if (editingFeature.id) {
-                await authFetch(`/api/admin/features/${editingFeature.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                saveRes = await authFetch(`/api/admin/features/${editingFeature.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
               } else {
-                await authFetch(`/api/admin/features`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                saveRes = await authFetch(`/api/admin/features`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
               }
+              
+              if (!saveRes.ok) {
+                const errData = await saveRes.json().catch(() => ({}));
+                alert(errData.error || 'Lỗi khi lưu khối 3D!');
+                return;
+              }
+
               const res = await fetch(`/api/features?campus=${encodeURIComponent(campus)}`);
               const data = await res.json();
               setFeatures(data.features || []);

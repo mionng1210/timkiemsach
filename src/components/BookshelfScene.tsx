@@ -24,6 +24,7 @@ interface BookshelfSceneProps {
   onAddRackAt?: (x: number, z: number) => void;
   onAddFeatureAt?: (x: number, z: number) => void;
   onFeatureClick?: (id: number) => void;
+  editingFeatureId?: number | null;
 }
 
 const ROW_SPACING_Z = 4.0;
@@ -514,7 +515,8 @@ function FeatureGrid({
   adminSubMode,
   onAddFeatureAt,
   onFeatureClick,
-  rackPositions
+  rackPositions,
+  editingFeatureId
 }: {
   visible: boolean;
   campus: string;
@@ -524,6 +526,7 @@ function FeatureGrid({
   onAddFeatureAt?: (x: number, z: number) => void;
   onFeatureClick?: (id: number) => void;
   rackPositions?: { rackNumber: number, x: number, z: number }[];
+  editingFeatureId?: number | null;
 }) {
   const [hoverPos, setHoverPos] = useState<[number, number] | null>(null);
 
@@ -545,67 +548,103 @@ function FeatureGrid({
 
   const availableSlots = useMemo(() => {
     return slots.filter(s => !existingFeatures.some(f => 
-      Math.abs(f.pos_x - s.x) < 2 && Math.abs(f.pos_z - s.z) < (f.length || 2) / 2
+      Math.abs(f.pos_x - s.x) < 2 && Math.abs(f.pos_z - s.z) < (f.length + 2.0) / 2
     ));
   }, [slots, existingFeatures]);
 
   return (
     <group>
-      {existingFeatures.map((feat) => (
-        <mesh
-          key={`feat-${feat.id}`}
-          position={[feat.pos_x, 0.6, feat.pos_z]}
-          rotation={[0, feat.rotation || 0, 0]}
-          castShadow receiveShadow
-          onClick={(e) => {
-            if (isAdminMode && adminSubMode === 'features') {
-              e.stopPropagation();
-              onFeatureClick?.(feat.id);
-            }
-          }}
-          onPointerMove={(e) => {
-            if (isAdminMode && adminSubMode === 'features') {
-              e.stopPropagation();
-              document.body.style.cursor = 'pointer';
-            }
-          }}
-          onPointerOut={() => {
-            if (isAdminMode && adminSubMode === 'features') {
-              document.body.style.cursor = 'default';
-            }
-          }}
-        >
-          <boxGeometry args={[feat.width || 1.2, 1.2, feat.length]} />
-          <meshLambertMaterial color="#8b4513" />
+      {/* 1. Lưới ô mờ hiển thị toàn bộ sàn quản lý khối 3D */}
+      {visible && slots.map((s, i) => (
+        <mesh key={`grid-helper-${i}`} position={[s.x, 0.01, s.z]}>
+          <boxGeometry args={[1.2, 0.01, 2.0]} />
+          <meshBasicMaterial color="#7f8c8d" wireframe transparent opacity={0.15} />
         </mesh>
       ))}
-      {visible && availableSlots.map((slot, i) => (
-        <mesh
-          key={`f-slot-${i}`}
-          position={[slot.x, 0.05, slot.z]}
-          onClick={(e) => {
-            e.stopPropagation();
-            onAddFeatureAt?.(slot.x, slot.z);
-          }}
-          onPointerMove={(e) => {
-            e.stopPropagation();
-            setHoverPos([slot.x, slot.z]);
-            document.body.style.cursor = 'pointer';
-          }}
-          onPointerOut={() => {
-            setHoverPos(null);
-            document.body.style.cursor = 'default';
-          }}
-        >
-          <boxGeometry args={[1.2, 0.1, 1.9]} />
-          <meshBasicMaterial
-            color={hoverPos && hoverPos[0] === slot.x && hoverPos[1] === slot.z ? "#4caf50" : "#e67e22"}
-            transparent
-            opacity={0.3}
-            depthWrite={false}
-          />
-        </mesh>
-      ))}
+
+      {/* 2. Hiển thị các khối hiện có */}
+      {existingFeatures.map((feat) => {
+        const isEditing = editingFeatureId === feat.id;
+        return (
+          <group key={`feat-group-${feat.id}`}>
+            <mesh
+              position={[feat.pos_x, 0.6, feat.pos_z]}
+              rotation={[0, feat.rotation || 0, 0]}
+              castShadow receiveShadow
+              onClick={(e) => {
+                if (isAdminMode && adminSubMode === 'features') {
+                  e.stopPropagation();
+                  onFeatureClick?.(feat.id);
+                }
+              }}
+              onPointerMove={(e) => {
+                if (isAdminMode && adminSubMode === 'features') {
+                  e.stopPropagation();
+                  document.body.style.cursor = 'pointer';
+                }
+              }}
+              onPointerOut={() => {
+                if (isAdminMode && adminSubMode === 'features') {
+                  document.body.style.cursor = 'default';
+                }
+              }}
+            >
+              <boxGeometry args={[feat.width || 1.2, 1.2, feat.length]} />
+              <meshLambertMaterial color={isEditing ? "#d35400" : "#8b4513"} />
+            </mesh>
+            {/* Outline highlight xanh dương nếu khối đang được chọn chỉnh sửa */}
+            {isEditing && (
+              <mesh position={[feat.pos_x, 0.6, feat.pos_z]} rotation={[0, feat.rotation || 0, 0]}>
+                <boxGeometry args={[(feat.width || 1.2) + 0.05, 1.25, feat.length + 0.05]} />
+                <meshBasicMaterial color="#3498db" wireframe transparent opacity={0.8} />
+              </mesh>
+            )}
+          </group>
+        );
+      })}
+
+      {/* 3. Hiển thị các ô trống khả dụng để thêm mới */}
+      {visible && availableSlots.map((slot, i) => {
+        const isHovered = hoverPos && hoverPos[0] === slot.x && hoverPos[1] === slot.z;
+        return (
+          <group key={`f-slot-group-${i}`}>
+            <mesh
+              position={[slot.x, 0.05, slot.z]}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddFeatureAt?.(slot.x, slot.z);
+              }}
+              onPointerMove={(e) => {
+                e.stopPropagation();
+                setHoverPos([slot.x, slot.z]);
+                document.body.style.cursor = 'pointer';
+              }}
+              onPointerOut={() => {
+                setHoverPos(null);
+                document.body.style.cursor = 'default';
+              }}
+            >
+              <boxGeometry args={[1.2, 0.1, 1.9]} />
+              <meshBasicMaterial
+                color={isHovered ? "#2ecc71" : "#e67e22"}
+                transparent
+                opacity={0.35}
+                depthWrite={false}
+              />
+            </mesh>
+            {/* Khung viền 3D màu cam (xanh lá khi hover) cho từng ô khả dụng */}
+            <mesh position={[slot.x, 0.05, slot.z]}>
+              <boxGeometry args={[1.22, 0.12, 1.92]} />
+              <meshBasicMaterial
+                color={isHovered ? "#2ecc71" : "#d35400"}
+                wireframe
+                transparent
+                opacity={0.65}
+              />
+            </mesh>
+          </group>
+        );
+      })}
     </group>
   );
 }
@@ -706,6 +745,7 @@ export default function BookshelfScene({
   onAddRackAt,
   onAddFeatureAt,
   onFeatureClick,
+  editingFeatureId,
 }: BookshelfSceneProps) {
 
   const { sequentialRacks, customShelves, customBays } = useMemo(() => {
@@ -1095,7 +1135,7 @@ export default function BookshelfScene({
         <AdminGrid visible={!!isAdminMode} onAddRackAt={onAddRackAt} racks={racks} campus={campus} />
       )}
       {campus === 'Thu Duc' && (
-        <FeatureGrid visible={!!isAdminMode && adminSubMode === 'features'} campus={campus} existingFeatures={customFeatures} onAddFeatureAt={onAddFeatureAt} isAdminMode={isAdminMode} adminSubMode={adminSubMode} onFeatureClick={onFeatureClick} rackPositions={rackPositions} />
+        <FeatureGrid visible={!!isAdminMode && adminSubMode === 'features'} campus={campus} existingFeatures={customFeatures} onAddFeatureAt={onAddFeatureAt} isAdminMode={isAdminMode} adminSubMode={adminSubMode} onFeatureClick={onFeatureClick} rackPositions={rackPositions} editingFeatureId={editingFeatureId} />
       )}
       {markerPos && <HighlightMarker position={markerPos} height={highlightShelfHeight} />}
         </group>
