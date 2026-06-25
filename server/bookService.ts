@@ -1196,36 +1196,72 @@ export async function getCustomFeatures(campusName: string) {
   }
 }
 
-export async function addCustomFeature(data: any) {
+export async function addCustomFeature(data: any): Promise<{ success: boolean; error?: string }> {
   const { campus, type, posX, posZ, length, width, rotation } = data;
   try {
     const campusRes = await pool.query('SELECT id FROM campuses WHERE name = $1', [campus]);
-    if (campusRes.rows.length === 0) return false;
+    if (campusRes.rows.length === 0) return { success: false, error: 'Không tìm thấy cơ sở (campus) tương ứng!' };
     const campusId = campusRes.rows[0].id;
+
+    // Kiểm tra đè lấp tọa độ
+    const existingFeatures = await pool.query(
+      'SELECT id, pos_x, pos_z, length FROM custom_features WHERE campus_id = $1',
+      [campusId]
+    );
+
+    const hasOverlap = existingFeatures.rows.some((f: any) => {
+      const sameCol = Math.abs(Number(f.pos_x) - Number(posX)) < 2.0;
+      const overlapZ = Math.abs(Number(f.pos_z) - Number(posZ)) < (Number(f.length) + Number(length)) / 2;
+      return sameCol && overlapZ;
+    });
+
+    if (hasOverlap) {
+      return { success: false, error: 'Không thể tạo khối vì bị đè lên khối hoặc kệ sách hiện có!' };
+    }
 
     await pool.query(`
       INSERT INTO custom_features (campus_id, type, pos_x, pos_z, length, width, rotation)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
     `, [campusId, type, posX, posZ, length, width || 1.2, rotation || 0]);
-    return true;
+    return { success: true };
   } catch (err) {
     console.error('addCustomFeature error:', err);
-    return false;
+    return { success: false, error: 'Lỗi hệ thống khi thêm khối 3D!' };
   }
 }
 
-export async function updateCustomFeature(id: number, data: any) {
+export async function updateCustomFeature(id: number, data: any): Promise<{ success: boolean; error?: string }> {
   const { posX, posZ, length, width, rotation } = data;
   try {
+    const infoRes = await pool.query('SELECT campus_id FROM custom_features WHERE id = $1', [id]);
+    if (infoRes.rows.length === 0) return { success: false, error: 'Không tìm thấy khối cần cập nhật!' };
+    const campusId = infoRes.rows[0].campus_id;
+
+    // Kiểm tra đè lấp tọa độ với các khối khác
+    const existingFeatures = await pool.query(
+      'SELECT id, pos_x, pos_z, length FROM custom_features WHERE campus_id = $1 AND id != $2',
+      [campusId, id]
+    );
+
+    const hasOverlap = existingFeatures.rows.some((f: any) => {
+      const sameCol = Math.abs(Number(f.pos_x) - Number(posX)) < 2.0;
+      const overlapZ = Math.abs(Number(f.pos_z) - Number(posZ)) < (Number(f.length) + Number(length)) / 2;
+      return sameCol && overlapZ;
+    });
+
+    if (hasOverlap) {
+      return { success: false, error: 'Không thể cập nhật khối vì bị đè lên khối hoặc kệ sách hiện có!' };
+    }
+
     await pool.query(`
       UPDATE custom_features
       SET pos_x = $1, pos_z = $2, length = $3, width = $4, rotation = $5
       WHERE id = $6
     `, [posX, posZ, length, width || 1.2, rotation || 0, id]);
-    return true;
+    return { success: true };
   } catch (err) {
     console.error('updateCustomFeature error:', err);
-    return false;
+    return { success: false, error: 'Lỗi hệ thống khi cập nhật khối 3D!' };
   }
 }
 
