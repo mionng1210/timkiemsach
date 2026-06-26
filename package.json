@@ -4,9 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:client": "vite",
-    "dev:server": "tsx watch server/index.ts",
+    "dev": "tsx watch server/index.ts",
     "build": "tsc -b && vite build"
   },
   "dependencies": {

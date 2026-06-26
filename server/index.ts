@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { createServer as createViteServer } from 'vite';
 import jwt from 'jsonwebtoken';
 import { 
   searchByDewey, 
@@ -23,7 +24,7 @@ import {
 
 
 const app = express();
-const PORT = 3001;
+const PORT = 5173;
 
 app.use(cors());
 app.use(express.json());
@@ -218,6 +219,17 @@ app.delete('/api/admin/features/:id', async (req, res) => {
 });
 
 await initializeDatabase();
+
+if (process.env.NODE_ENV !== 'production') {
+  const vite = await createViteServer({
+    server: { middlewareMode: true },
+    appType: 'spa',
+  });
+  app.use(vite.middlewares);
+} else {
+  // Phục vụ frontend đã build trong môi trường production
+  app.use(express.static('dist'));
+}
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
