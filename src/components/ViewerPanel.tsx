@@ -1488,6 +1488,7 @@ export default function ViewerPanel({
                   onExitExternalGuide?.(bookId);
                 } else {
                   setIsPathOverview(false);
+                  onGuideModeChange?.(false);
                   setShowStartPicker(true);
                 }
               }}
