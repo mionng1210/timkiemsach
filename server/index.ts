@@ -2,10 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
 import jwt from 'jsonwebtoken';
-import { 
-  searchByDewey, 
-  searchByCode, 
-  getRackLayout, 
+import {
+  searchByDewey,
+  searchByCode,
+  getRackLayout,
   getCampuses,
   updateShelf,
   deleteShelf,
@@ -78,7 +78,7 @@ app.get('/api/search', async (req, res) => {
 
     // Kiểm tra nếu query là số (có thể có dấu chấm) và không chứa ký tự khác → Ưu tiên tìm theo Dewey
     const isPureNumber = /^\d+(\.\d+)?$/.test(q.trim());
-    
+
     if (isPureNumber) {
       const deweyNum = parseFloat(q);
       if (!isNaN(deweyNum)) {
@@ -131,7 +131,7 @@ app.post('/api/admin/shelves', async (req, res) => {
 app.put('/api/admin/shelves/:id', async (req, res) => {
   const id = parseInt(req.params.id);
   const { deweyStart, deweyEnd, color } = req.body;
-  
+
   const success = await updateShelf(id, { deweyStart, deweyEnd, color });
   if (success) return res.json({ success: true });
   return res.status(500).json({ error: 'Failed to update shelf' });
@@ -152,9 +152,9 @@ app.get('/api/admin/shelves/lookup', async (req, res) => {
   const { campus, rackNumber, bay, face } = req.query;
   try {
     const data = await lookupShelf(
-      campus as string, 
-      parseInt(rackNumber as string), 
-      parseInt(bay as string), 
+      campus as string,
+      parseInt(rackNumber as string),
+      parseInt(bay as string),
       parseInt(face as string)
     );
     if (data) return res.json(data);
@@ -231,6 +231,6 @@ if (process.env.NODE_ENV !== 'production') {
   app.use(express.static('dist'));
 }
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
