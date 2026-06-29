@@ -26,12 +26,12 @@ interface ViewerPanelProps {
   onExitExternalGuide?: (bookId: string) => void;
 }
 
-export default function ViewerPanel({ 
-  selectedResult, 
-  campus, 
-  onBayClick, 
-  onGuideModeChange, 
-  onClearResult, 
+export default function ViewerPanel({
+  selectedResult,
+  campus,
+  onBayClick,
+  onGuideModeChange,
+  onClearResult,
   onEditingChange,
   isExternalGuided = false,
   bookId = '1',
@@ -50,26 +50,26 @@ export default function ViewerPanel({
     if (!guideWaypoints || guideWaypoints.length === 0) return [];
     const MIN_DIST = 10.0;
     const steps = [0];
-    
+
     for (let i = 1; i < guideWaypoints.length - 2; i++) {
-      const nextDist = guideWaypoints[i].pos.distanceTo(guideWaypoints[i+1].pos);
+      const nextDist = guideWaypoints[i].pos.distanceTo(guideWaypoints[i + 1].pos);
       if (nextDist >= MIN_DIST) {
         steps.push(i);
       }
     }
-    
+
     if (guideWaypoints.length > 2) {
       if (!steps.includes(guideWaypoints.length - 2)) {
         steps.push(guideWaypoints.length - 2);
       }
     }
-    
+
     if (guideWaypoints.length > 1) {
       if (!steps.includes(guideWaypoints.length - 1)) {
         steps.push(guideWaypoints.length - 1);
       }
     }
-    
+
     return steps.sort((a, b) => a - b);
   }, [guideWaypoints]);
 
@@ -121,7 +121,7 @@ export default function ViewerPanel({
     setGuideWaypoints(null);
     setShowStartPicker(false);
     setUserStartRack(null);
-    
+
     // Reset focus khi đổi campus hoặc search result
     setFocusRack(selectedResult?.shelf?.rackNumber ?? null);
     setFocusBay(selectedResult?.shelf?.bay ?? null);
@@ -147,10 +147,10 @@ export default function ViewerPanel({
       try {
         const res = await fetch(`/api/racks?campus=${encodeURIComponent(campus)}`);
         const data = await res.json();
-        
+
         const featureRes = await fetch(`/api/features?campus=${encodeURIComponent(campus)}`);
         const featureData = await featureRes.json();
-        
+
         if (active) {
           setRacks(data.racks || []);
           setFeatures(featureData.features || []);
@@ -319,14 +319,14 @@ export default function ViewerPanel({
 
   useEffect(() => {
     const isMenuOpen = isAdminMode && adminSubMode !== 'hidden' && adminSubMode !== null;
-    
+
     // Toggle class on body to securely hide mobile toggle button via CSS
     if (isMenuOpen) {
       document.body.classList.add('admin-mode-active');
     } else {
       document.body.classList.remove('admin-mode-active');
     }
-    
+
     const isEditingOrAdding = editingShelf !== null || addingShelfPos !== null;
     onEditingChange?.(isMenuOpen || isEditingOrAdding);
 
@@ -370,7 +370,7 @@ export default function ViewerPanel({
         const res2 = await fetch(`/api/racks?campus=${encodeURIComponent(campus)}`);
         const data = await res2.json();
         setRacks(data.racks || []);
-        
+
         // Cập nhật lại editingShelf để UI phản hồi ngay
         const updatedShelf = (data.racks || []).flatMap((r: any) => r.shelves).find((s: any) => s.shelfId === shelfId);
         if (updatedShelf) setEditingShelf(updatedShelf);
@@ -624,7 +624,7 @@ export default function ViewerPanel({
 
   const maxCells = useMemo(() => {
     if (!editingFeature) return 1;
-    
+
     // Tọa độ bắt đầu vật lý của khối
     const zStart = editingFeature.pos_z - editingFeature.length / 2;
 
@@ -666,16 +666,20 @@ export default function ViewerPanel({
               <button
                 className="admin-toggle-btn"
                 onClick={() => {
-                  if (adminSubMode === 'hidden') {
+                  if (adminSubMode !== 'menu') {
                     setAdminSubMode('menu');
+                    setEditingShelf(null);
+                    setAddingShelfPos(null);
+                    setEditingFeature(null);
                   } else {
                     setAdminSubMode('hidden');
                     setEditingShelf(null);
                     setAddingShelfPos(null);
+                    setEditingFeature(null);
                   }
                 }}
               >
-                {adminSubMode === 'hidden' ? '👁️ Hiện Menu' : '👁️‍🗨️ Ẩn Menu'}
+                {adminSubMode !== 'menu' ? '👁️ Hiện Menu' : '👁️‍🗨️ Ẩn Menu'}
               </button>
             )}
             <button
@@ -915,16 +919,6 @@ export default function ViewerPanel({
         </div>
       )}
 
-      {/* Nút quay lại menu khi đang ở sub-mode */}
-      {isAdminMode && adminSubMode && adminSubMode !== 'menu' && (
-        <button
-          className="admin-back-btn"
-          onClick={() => { setAdminSubMode('menu'); setEditingShelf(null); setAddingShelfPos(null); setEditingFeature(null); }}
-        >
-          ← Quay lại menu
-        </button>
-      )}
-
       {isAdminMode && adminSubMode === 'manage' && editingShelf && (
         <div
           className="admin-shelf-panel"
@@ -935,23 +929,25 @@ export default function ViewerPanel({
           </h3>
           <p>Mã kệ: <strong>{editingShelf.code.toUpperCase()}</strong> | Bay: {editingShelf.bay} | Mặt: {editingShelf.face === 1 ? 'Trước' : 'Sau'}</p>
 
-          <div className="admin-form-group">
-            <label>Dewey Start:</label>
-            <input
-              type="text"
-              defaultValue={editingShelf.deweyStart.toFixed(3)}
-              id="deweyStart"
-            />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <div className="admin-form-group">
+              <label>Dewey Start:</label>
+              <input
+                type="text"
+                defaultValue={editingShelf.deweyStart.toFixed(3)}
+                id="deweyStart"
+              />
+            </div>
+            <div className="admin-form-group">
+              <label>Dewey End:</label>
+              <input
+                type="text"
+                defaultValue={editingShelf.deweyEnd.toFixed(3)}
+                id="deweyEnd"
+              />
+            </div>
           </div>
-          <div className="admin-form-group">
-            <label>Dewey End:</label>
-            <input
-              type="text"
-              defaultValue={editingShelf.deweyEnd.toFixed(3)}
-              id="deweyEnd"
-            />
-          </div>
-          
+
           <div className="admin-form-group">
             <label>Màu mặt kệ đầu dãy:</label>
             <input
@@ -976,12 +972,12 @@ export default function ViewerPanel({
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(floorNum => {
                 const isHidden = editingShelf.hiddenFloors?.includes(floorNum);
                 return (
-                  <button 
+                  <button
                     key={floorNum}
                     onClick={() => handleToggleFloor(editingShelf.shelfId, floorNum)}
                     style={{
-                      padding: '5px',
-                      fontSize: '12px',
+                      padding: '4px 5px',
+                      fontSize: '11px',
                       borderRadius: '4px',
                       border: '1px solid var(--border)',
                       backgroundColor: isHidden ? '#ef4444' : '#10b981',
@@ -1028,40 +1024,42 @@ export default function ViewerPanel({
           </h3>
           <p>Tại tọa độ: X={addingShelfPos.x.toFixed(1)}, Z={addingShelfPos.z.toFixed(1)}</p>
 
-          <div className="admin-form-group">
-            <label>Số Rack (VD: 10):</label>
-            <input
-              type="number"
-              id="addRackNumber"
-              value={formRackNumber}
-              readOnly={true}
-              style={{
-                backgroundColor: 'rgba(0, 0, 0, 0.3)',
-                color: 'rgba(232, 236, 244, 0.4)',
-                cursor: 'not-allowed',
-                border: '1px solid var(--border)',
-                fontWeight: 'bold',
-                opacity: 1
-              }}
-            />
-          </div>
-          <div className="admin-form-group">
-            <label>Khoang (Bay):</label>
-            <input
-              type="number"
-              id="addBay"
-              value={formBay}
-              onChange={(e) => setFormBay(parseInt(e.target.value) || 0)}
-              disabled={true}
-              style={{
-                backgroundColor: 'rgba(0, 0, 0, 0.3)',
-                color: 'rgba(232, 236, 244, 0.4)',
-                cursor: 'not-allowed',
-                border: '1px solid var(--border)',
-                fontWeight: 'bold',
-                opacity: 1
-              }}
-            />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <div className="admin-form-group">
+              <label>Số Rack:</label>
+              <input
+                type="number"
+                id="addRackNumber"
+                value={formRackNumber}
+                readOnly={true}
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                  color: 'rgba(232, 236, 244, 0.4)',
+                  cursor: 'not-allowed',
+                  border: '1px solid var(--border)',
+                  fontWeight: 'bold',
+                  opacity: 1
+                }}
+              />
+            </div>
+            <div className="admin-form-group">
+              <label>Khoang (Bay):</label>
+              <input
+                type="number"
+                id="addBay"
+                value={formBay}
+                onChange={(e) => setFormBay(parseInt(e.target.value) || 0)}
+                disabled={true}
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                  color: 'rgba(232, 236, 244, 0.4)',
+                  cursor: 'not-allowed',
+                  border: '1px solid var(--border)',
+                  fontWeight: 'bold',
+                  opacity: 1
+                }}
+              />
+            </div>
           </div>
 
           <div className="admin-form-group">
@@ -1081,8 +1079,8 @@ export default function ViewerPanel({
                       }
                     }}
                     style={{
-                      padding: '8px 5px',
-                      fontSize: '12px',
+                      padding: '4px 5px',
+                      fontSize: '11px',
                       borderRadius: '4px',
                       border: '1px solid var(--border)',
                       backgroundColor: isSelected ? '#10b981' : 'rgba(255, 255, 255, 0.05)',
@@ -1106,52 +1104,60 @@ export default function ViewerPanel({
             <>
               {/* Thu Đức (Z-shape): Face 2 (Mặt sau) có letter thấp hơn, hiển thị trước */}
               <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#f59e0b', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt sau (2) - {suggestedCodes.code2.toUpperCase()}</div>
-              <div className="admin-form-group">
-                <label>Dewey Start:</label>
-                <input type="text" id="addDeweyStart2" key={`s2-${formRackNumber}-${formBay}-${prefilledDewey.s2}`} defaultValue={prefilledDewey.s2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
-              </div>
-              <div className="admin-form-group">
-                <label>Dewey End:</label>
-                <input type="text" id="addDeweyEnd2" key={`e2-${formRackNumber}-${formBay}-${prefilledDewey.e2}`} defaultValue={prefilledDewey.e2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div className="admin-form-group">
+                  <label>Dewey Start:</label>
+                  <input type="text" id="addDeweyStart2" key={`s2-${formRackNumber}-${formBay}-${prefilledDewey.s2}`} defaultValue={prefilledDewey.s2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+                </div>
+                <div className="admin-form-group">
+                  <label>Dewey End:</label>
+                  <input type="text" id="addDeweyEnd2" key={`e2-${formRackNumber}-${formBay}-${prefilledDewey.e2}`} defaultValue={prefilledDewey.e2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+                </div>
               </div>
 
               <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#3b82f6', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt trước (1) - {suggestedCodes.code1.toUpperCase()}</div>
-              <div className="admin-form-group">
-                <label>Dewey Start:</label>
-                <input type="text" id="addDeweyStart1" key={`s1-${formRackNumber}-${formBay}-${prefilledDewey.s1}`} defaultValue={prefilledDewey.s1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
-              </div>
-              <div className="admin-form-group">
-                <label>Dewey End:</label>
-                <input type="text" id="addDeweyEnd1" key={`e1-${formRackNumber}-${formBay}-${prefilledDewey.e1}`} defaultValue={prefilledDewey.e1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div className="admin-form-group">
+                  <label>Dewey Start:</label>
+                  <input type="text" id="addDeweyStart1" key={`s1-${formRackNumber}-${formBay}-${prefilledDewey.s1}`} defaultValue={prefilledDewey.s1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+                </div>
+                <div className="admin-form-group">
+                  <label>Dewey End:</label>
+                  <input type="text" id="addDeweyEnd1" key={`e1-${formRackNumber}-${formBay}-${prefilledDewey.e1}`} defaultValue={prefilledDewey.e1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+                </div>
               </div>
             </>
           ) : (
             <>
               {/* Sài Gòn (U-shape): Face 1 (Mặt trước) có letter thấp hơn, hiển thị trước */}
               <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt trước (1) - {suggestedCodes.code1.toUpperCase()}</div>
-              <div className="admin-form-group">
-                <label>Dewey Start:</label>
-                <input type="text" id="addDeweyStart1" key={`s1-${formRackNumber}-${formBay}-${prefilledDewey.s1}`} defaultValue={prefilledDewey.s1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
-              </div>
-              <div className="admin-form-group">
-                <label>Dewey End:</label>
-                <input type="text" id="addDeweyEnd1" key={`e1-${formRackNumber}-${formBay}-${prefilledDewey.e1}`} defaultValue={prefilledDewey.e1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div className="admin-form-group">
+                  <label>Dewey Start:</label>
+                  <input type="text" id="addDeweyStart1" key={`s1-${formRackNumber}-${formBay}-${prefilledDewey.s1}`} defaultValue={prefilledDewey.s1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+                </div>
+                <div className="admin-form-group">
+                  <label>Dewey End:</label>
+                  <input type="text" id="addDeweyEnd1" key={`e1-${formRackNumber}-${formBay}-${prefilledDewey.e1}`} defaultValue={prefilledDewey.e1} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+                </div>
               </div>
 
               <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#1e3a8a', borderBottom: '1px solid #ccc', paddingBottom: '3px' }}>Mặt sau (2) - {suggestedCodes.code2.toUpperCase()}</div>
-              <div className="admin-form-group">
-                <label>Dewey Start:</label>
-                <input type="text" id="addDeweyStart2" key={`s2-${formRackNumber}-${formBay}-${prefilledDewey.s2}`} defaultValue={prefilledDewey.s2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
-              </div>
-              <div className="admin-form-group">
-                <label>Dewey End:</label>
-                <input type="text" id="addDeweyEnd2" key={`e2-${formRackNumber}-${formBay}-${prefilledDewey.e2}`} defaultValue={prefilledDewey.e2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div className="admin-form-group">
+                  <label>Dewey Start:</label>
+                  <input type="text" id="addDeweyStart2" key={`s2-${formRackNumber}-${formBay}-${prefilledDewey.s2}`} defaultValue={prefilledDewey.s2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+                </div>
+                <div className="admin-form-group">
+                  <label>Dewey End:</label>
+                  <input type="text" id="addDeweyEnd2" key={`e2-${formRackNumber}-${formBay}-${prefilledDewey.e2}`} defaultValue={prefilledDewey.e2} readOnly={true} style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+                </div>
               </div>
             </>
           )}
 
           <div className="admin-actions">
-            <button className="admin-btn update" onClick={handleAddShelf}>
+            <button className="admin-btn update" style={{ backgroundColor: '#10b981', color: 'white' }} onClick={handleAddShelf}>
               Thêm kệ
             </button>
             <button className="admin-btn cancel" onClick={() => setAddingShelfPos(null)}>
@@ -1217,33 +1223,35 @@ export default function ViewerPanel({
             <label>Loại (type):</label>
             <input type="text" id="featType" defaultValue={editingFeature.type} />
           </div>
-          <div className="admin-form-group">
-            <label>Toạ độ X:</label>
-            <input type="number" id="featX" defaultValue={editingFeature.pos_x} step="0.5" readOnly style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
-          </div>
-          <div className="admin-form-group">
-            <label>Toạ độ Z (bắt đầu):</label>
-            <input 
-              type="number" 
-              id="featZ" 
-              defaultValue={editingFeature.pos_z - editingFeature.length / 2} 
-              readOnly 
-              style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} 
-            />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <div className="admin-form-group">
+              <label>Toạ độ X:</label>
+              <input type="number" id="featX" defaultValue={editingFeature.pos_x} step="0.5" readOnly style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
+            </div>
+            <div className="admin-form-group">
+              <label>Toạ độ Z (bắt đầu):</label>
+              <input
+                type="number"
+                id="featZ"
+                defaultValue={editingFeature.pos_z - editingFeature.length / 2}
+                readOnly
+                style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }}
+              />
+            </div>
           </div>
           <div className="admin-form-group">
             <label>Chiều dài (số ô):</label>
-            <select 
-              id="featLengthCells" 
+            <select
+              id="featLengthCells"
               defaultValue={Math.round(editingFeature.length / 2.0)}
               style={{
                 width: '100%',
-                padding: '8px',
+                padding: '6px 8px',
                 borderRadius: '4px',
                 border: '1px solid var(--border)',
                 backgroundColor: 'rgba(0, 0, 0, 0.3)',
                 color: 'var(--text-primary)',
-                fontSize: '14px'
+                fontSize: '12px'
               }}
             >
               {(() => {
@@ -1251,7 +1259,7 @@ export default function ViewerPanel({
                 const optionsCount = Math.max(maxCells, currentCells);
                 return Array.from({ length: optionsCount }).map((_, i) => (
                   <option key={i + 1} value={i + 1}>
-                    {i + 1} ô ({ (i + 1) * 2 }m)
+                    {i + 1} ô ({(i + 1) * 2}m)
                   </option>
                 ));
               })()}
@@ -1283,7 +1291,7 @@ export default function ViewerPanel({
                 alert('Không thể lưu: Vị trí này đè lên một khối khác đã có!');
                 return;
               }
-              
+
               const payload = { campus, type, posX, posZ, length, width: 1.2, rotation: 0 };
               let saveRes;
               if (editingFeature.id) {
@@ -1291,7 +1299,7 @@ export default function ViewerPanel({
               } else {
                 saveRes = await authFetch(`/api/admin/features`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
               }
-              
+
               if (!saveRes.ok) {
                 const errData = await saveRes.json().catch(() => ({}));
                 alert(errData.error || 'Lỗi khi lưu khối 3D!');
@@ -1474,7 +1482,7 @@ export default function ViewerPanel({
             </button>
             <button
               className="guide-btn guide-btn-exit"
-              style={{ width: 'auto', padding: '0 20px' }}
+              style={{ marginTop: 0, flex: 1, padding: '10px', fontSize: '15px' }}
               onClick={() => {
                 if (isExternalGuided) {
                   onExitExternalGuide?.(bookId);
@@ -1492,9 +1500,9 @@ export default function ViewerPanel({
       {showLoginModal && (
         <div className="guide-overlay" style={{ zIndex: 9999 }}>
           <div className="guide-modal" style={{ maxWidth: '400px', padding: '30px', textAlign: 'center' }}>
-            <button className="guide-close" onClick={() => { 
-              setShowLoginModal(false); 
-              setLoginError(''); 
+            <button className="guide-close" onClick={() => {
+              setShowLoginModal(false);
+              setLoginError('');
               if (window.location.pathname === '/admin') {
                 window.location.href = `/mock.html?book=${bookId}`;
               }
@@ -1615,7 +1623,7 @@ function FirstPersonCamera({
     const loIdxD = Math.max(0, Math.min(waypoints.length - 1, Math.floor(lsForDir)));
     const hiIdxD = Math.max(0, Math.min(waypoints.length - 1, Math.ceil(lsForDir)));
     const tForDir = lsForDir - loIdxD;
-    
+
     let dirX: number = 0, dirZ: number = 0;
     if (loIdxD === hiIdxD) {
       const nextIdx = Math.min(waypoints.length - 1, hiIdxD + 1);
@@ -1662,7 +1670,7 @@ function FirstPersonCamera({
 
         const stepRate = segDist > 0.1 ? WALK_SPEED / segDist : WALK_SPEED;
         let nextStep = lerpStepRef.current + walkDir * Math.min(Math.abs(stepDiff), stepRate * delta);
-        
+
         if (walkDir > 0) {
           const nextInt = Math.floor(nextStep);
           if (nextInt > Math.floor(lerpStepRef.current) && nextInt < currentStep) nextStep = nextInt;
@@ -1679,7 +1687,7 @@ function FirstPersonCamera({
     const loIdx = Math.max(0, Math.min(waypoints.length - 1, Math.floor(ls)));
     const hiIdx = Math.max(0, Math.min(waypoints.length - 1, Math.ceil(ls)));
     const t = ls - loIdx;
-    
+
     const posLo = waypoints[loIdx].pos;
     const posHi = waypoints[hiIdx].pos;
     const tp = targetPos.current;
