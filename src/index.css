@@ -1792,7 +1792,7 @@ body,
 
 .admin-shelf-panel {
   position: absolute;
-  top: 110px;
+  top: 70px;
   left: 24px;
   width: 240px;
   max-height: calc(100% - 100px);
