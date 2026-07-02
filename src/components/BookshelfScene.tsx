@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from 'react';
+import { useMemo, useState, useEffect, useRef, memo } from 'react';
 import { Text, Line, Merged } from '@react-three/drei';
 import * as THREE from 'three';
 import type { RackInfo, ShelfInfo } from '../types';
@@ -82,7 +82,7 @@ function getRackMats(rackNumber: number) {
 const woodMat = new THREE.MeshLambertMaterial({ color: '#6b4226' });
 
 // Components using raw meshes with cached materials
-function Bay({
+const Bay = memo(function Bay({
   SideWood,
   FloorWood,
   DividerWood,
@@ -301,9 +301,9 @@ function Bay({
       )}
     </group>
   );
-}
+});
 
-function Rack({
+const Rack = memo(function Rack({
   SideWood,
   FloorWood,
   DividerWood,
@@ -389,7 +389,7 @@ function Rack({
 
     </group>
   );
-}
+});
 
 // Giữ nguyên các thành phần nhỏ khác
 function LowDisplayRack({ position, length = 6 }: { position: [number, number, number], length?: number }) {
@@ -730,7 +730,7 @@ function BookshelfMergedContainer({ children }: { children: (SideWood: any, Floo
   );
 }
 
-export default function BookshelfScene({
+const BookshelfScene = memo(function BookshelfScene({
   racks,
   customFeatures = [],
   campus,
@@ -936,7 +936,12 @@ export default function BookshelfScene({
       }
 
       if (startRackNumber === -1) {
-        path.push({ pos: new THREE.Vector3(mainCorridorX, 0.05, frontOfDeskZ), msg: 'Xuất phát từ quầy thủ thư' });
+        const deskX = features?.deskPos ? features.deskPos[0] : -12;
+        const deskZ = features?.deskPos ? features.deskPos[2] : rack2.z + 10;
+        const signZ = deskZ - 1.05; // Vị trí bảng chỗ quầy (xoay 180 độ)
+        path.push({ pos: new THREE.Vector3(deskX, 0.05, signZ), msg: 'Xuất phát từ bảng quầy thủ thư' });
+        path.push({ pos: new THREE.Vector3(deskX, 0.05, frontOfDeskZ), msg: 'Tiến lên phía trước quầy' });
+        path.push({ pos: new THREE.Vector3(mainCorridorX, 0.05, frontOfDeskZ), msg: 'Rẽ sang dãy kệ' });
       } else if (startRackNumber === 1 || startRackForSaiGon) {
         path.push({ pos: new THREE.Vector3(mainCorridorX, 0.05, startAisleZ), msg: `Bắt đầu từ lối đi kệ số ${startRackNumber}` });
       } else {
@@ -1015,9 +1020,12 @@ export default function BookshelfScene({
         const deskX = features?.deskPos ? features.deskPos[0] : -40.5;
         const deskZ = features?.deskPos ? features.deskPos[2] : -22;
         const outsideBrownX = -5.0;
+        const signZ = deskZ + 1.05; // Vị trí bảng chỗ quầy thủ thư
+        const forwardZ = deskZ + 4.5; // Đi lên phía trước quầy 1 tí
 
-        path.push({ pos: new THREE.Vector3(deskX, 0.05, deskZ), msg: 'Xuất phát từ quầy thủ thư' });
-        path.push({ pos: new THREE.Vector3(outsideBrownX, 0.05, deskZ), msg: 'Đi ngang qua khu vực sảnh' });
+        path.push({ pos: new THREE.Vector3(deskX, 0.05, signZ), msg: 'Xuất phát từ bảng quầy thủ thư' });
+        path.push({ pos: new THREE.Vector3(deskX, 0.05, forwardZ), msg: 'Tiến lên phía trước sảnh' });
+        path.push({ pos: new THREE.Vector3(outsideBrownX, 0.05, forwardZ), msg: 'Rẽ sang dãy kệ' });
         path.push({ pos: new THREE.Vector3(outsideBrownX, 0.05, libraryGapZ), msg: 'Đi dọc theo vách ngăn màu nâu' });
         path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Đi qua khoảng trống giữa các vách ngăn' });
       } else if (startRack) {
@@ -1025,12 +1033,14 @@ export default function BookshelfScene({
         path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, startAisleZ), msg: `Bắt đầu từ lối đi kệ số ${startRackNumber}` });
       } else {
         const startX = features?.entrancePos ? features.entrancePos[0] : -40.5;
-        // Lùi vào trong thư viện 1.5m để đường dẫn không bị dính ra ngoài cửa
-        const startZ = features?.entrancePos ? features.entrancePos[2] - 1.5 : 24.5;
+        const entranceZ = features?.entrancePos ? features.entrancePos[2] : 26;
+        const signZ = entranceZ - 0.2; // Ngay dưới bảng hiệu cửa ra vào
+        const forwardZ = entranceZ - 4.5; // Tiến vào trong sảnh 1 tí
         const outsideBrownX = -5.0;
 
-        path.push({ pos: new THREE.Vector3(startX, 0.05, startZ), msg: 'Bắt đầu từ cửa vào' });
-        path.push({ pos: new THREE.Vector3(outsideBrownX, 0.05, startZ), msg: 'Đi ngang qua sảnh để tới vách ngăn' });
+        path.push({ pos: new THREE.Vector3(startX, 0.05, signZ), msg: 'Xuất phát từ bảng cửa ra vào' });
+        path.push({ pos: new THREE.Vector3(startX, 0.05, forwardZ), msg: 'Tiến vào sảnh chính' });
+        path.push({ pos: new THREE.Vector3(outsideBrownX, 0.05, forwardZ), msg: 'Rẽ sang dãy kệ' });
         path.push({ pos: new THREE.Vector3(outsideBrownX, 0.05, libraryGapZ), msg: 'Đi dọc theo vách ngăn màu nâu' });
         path.push({ pos: new THREE.Vector3(bookshelfEntryX, 0.05, libraryGapZ), msg: 'Đi qua khoảng trống giữa các vách ngăn' });
       }
@@ -1142,4 +1152,6 @@ export default function BookshelfScene({
       )}
     </BookshelfMergedContainer>
   );
-}
+});
+
+export default BookshelfScene;
