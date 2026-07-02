@@ -534,9 +534,15 @@ export default function ViewerPanel({
       return;
     }
 
-    // Toggle: click vào kệ đang focus → reset hoàn toàn
+    if (!isAdminMode && focusRack !== null) {
+      return;
+    }
+
+    // Toggle: click vào kệ đang focus → reset hoàn toàn (chỉ áp dụng cho Admin)
     if (focusRack === rackNumber && focusBay === bay && focusFace === face) {
-      clearFocus();
+      if (isAdminMode) {
+        clearFocus();
+      }
       return;
     }
 
@@ -729,7 +735,9 @@ export default function ViewerPanel({
           depth: true
         }}
         onPointerMissed={() => {
-          clearFocus();
+          if (isAdminMode) {
+            clearFocus();
+          }
           setEditingShelf(null);
           setAddingShelfPos(null);
         }}
@@ -1484,13 +1492,9 @@ export default function ViewerPanel({
               className="guide-btn guide-btn-exit"
               style={{ marginTop: 0, flex: 1, padding: '10px', fontSize: '15px' }}
               onClick={() => {
-                if (isExternalGuided) {
-                  onExitExternalGuide?.(bookId);
-                } else {
-                  setIsPathOverview(false);
-                  onGuideModeChange?.(false);
-                  setShowStartPicker(true);
-                }
+                setIsPathOverview(false);
+                onGuideModeChange?.(false);
+                setShowStartPicker(true);
               }}
             >
               Thoát
