@@ -2,12 +2,22 @@ import { useState, useEffect } from 'react';
 
 export default function GuideOverlay() {
   const [isOpen, setIsOpen] = useState(false);
-  const [isTouch, setIsTouch] = useState(false);
+  const [controlMode, setControlMode] = useState<'touch' | 'mouse' | 'hybrid'>('mouse');
 
-  // Tự động mở khi load lần đầu (kiểm tra localStorage)
+  // Tự động mở khi load lần đầu (kiểm tra localStorage) và nhận dạng thiết bị
   useEffect(() => {
-    setIsTouch('ontouchstart' in window || navigator.maxTouchPoints > 0);
-    const hasSeenGuide = localStorage.getItem('hasSeenGuide');
+    const coarse = window.matchMedia("(any-pointer: coarse)").matches || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    const fine = window.matchMedia("(any-pointer: fine)").matches || window.matchMedia("(pointer: fine)").matches;
+
+    if (coarse && fine) {
+      setControlMode('hybrid');
+    } else if (coarse) {
+      setControlMode('touch');
+    } else {
+      setControlMode('mouse');
+    }
+
+    const hasSeenGuide = localStorage.getItem('hasSeenGuide_3d');
     if (!hasSeenGuide) {
       setIsOpen(true);
     }
@@ -15,12 +25,12 @@ export default function GuideOverlay() {
 
   const closeGuide = () => {
     setIsOpen(false);
-    localStorage.setItem('hasSeenGuide', 'true');
+    localStorage.setItem('hasSeenGuide_3d', 'true');
   };
 
   if (!isOpen) {
     return (
-      <button className="help-btn" onClick={() => setIsOpen(true)} title="Hướng dẫn sử dụng">
+      <button className="help-btn" onClick={() => setIsOpen(true)} title="Hướng dẫn điều khiển 3D">
         ❓
       </button>
     );
@@ -32,68 +42,54 @@ export default function GuideOverlay() {
         <button className="guide-close" onClick={closeGuide}>&times;</button>
 
         <div className="guide-header">
-          <div className="guide-icon">📚</div>
-          <h2>Hướng dẫn tìm sách</h2>
-          <p>Chỉ với 4 bước đơn giản để tìm thấy vị trí sách của bạn</p>
+          <div className="guide-icon">🎮</div>
+          <h2>Hướng dẫn điều khiển 3D</h2>
+          <p>Làm quen với thao tác di chuyển và tương tác trên bản đồ thư viện</p>
         </div>
 
-        <div className="guide-steps">
-          <div className="guide-step">
-            <div className="step-num">1</div>
-            <div className="step-content">
-              <h4>Tìm kiếm sách</h4>
-              <p>Nhập mã số Dewey vào ô tìm kiếm ở thanh bên trái.</p>
+        <div className="guide-controls-info" style={{ marginBottom: '32px' }}>
+          <h4>🗺️ Thao tác di chuyển góc nhìn</h4>
+          
+          {controlMode === 'hybrid' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase' }}>
+                  🖱️ Với chuột & bàn phím:
+                </div>
+                <div className="control-grid">
+                  <div className="control-item"><span>🖱️</span> Chuột trái: Kéo để di chuyển</div>
+                  <div className="control-item"><span>⌨️</span> Ctrl + Chuột: Kéo để xoay</div>
+                  <div className="control-item"><span>🎡</span> Cuộn chuột: Phóng to / nhỏ</div>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase' }}>
+                  👆 Với màn hình cảm ứng:
+                </div>
+                <div className="control-grid">
+                  <div className="control-item"><span>👆</span> 1 ngón: Kéo để di chuyển</div>
+                  <div className="control-item"><span>✌️</span> 2 ngón: Xoay bản đồ</div>
+                  <div className="control-item"><span>🤏</span> Thu phóng: Phóng to / nhỏ</div>
+                </div>
+              </div>
             </div>
-          </div>
-
-          <div className="guide-step">
-            <div className="step-num">2</div>
-            <div className="step-content">
-              <h4>Chọn kết quả</h4>
-              <p>Nhấn vào quyển sách bạn tìm thấy. Camera sẽ tự động lướt đến kệ đó.</p>
+          ) : controlMode === 'touch' ? (
+            <div className="control-grid">
+              <div className="control-item"><span>👆</span> 1 ngón: Kéo để di chuyển</div>
+              <div className="control-item"><span>✌️</span> 2 ngón: Xoay bản đồ</div>
+              <div className="control-item"><span>🤏</span> Thu phóng: Phóng to / nhỏ</div>
             </div>
-          </div>
-
-          <div className="guide-step">
-            <div className="step-num">3</div>
-            <div className="step-content">
-              <h4>Nhìn mũi tên vàng</h4>
-              <p>Một mũi tên vàng và vùng xanh sẽ nhấp nháy chỉ rõ vị trí chính xác.</p>
+          ) : (
+            <div className="control-grid">
+              <div className="control-item"><span>🖱️</span> Chuột trái: Kéo để di chuyển</div>
+              <div className="control-item"><span>⌨️</span> Ctrl + Chuột: Kéo để xoay</div>
+              <div className="control-item"><span>🎡</span> Cuộn chuột: Phóng to / nhỏ</div>
             </div>
-          </div>
-
-          <div className="guide-step">
-            <div className="step-num">4</div>
-            <div className="step-content">
-              <h4>Xác định mặt kệ</h4>
-              <p>Kiểm tra nhãn ở dưới để biết sách nằm ở <strong>Mặt Trước</strong> hay <strong>Mặt Sau</strong>.</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="guide-divider"></div>
-
-        <div className="guide-controls-info">
-          <h4>🎮 Cách điều khiển 3D</h4>
-          <div className="control-grid">
-            {isTouch ? (
-              <>
-                <div className="control-item"><span>👆</span> 1 ngón: Di chuyển</div>
-                <div className="control-item"><span>✌️</span> 2 ngón: Xoay</div>
-                <div className="control-item"><span>🤏</span> Thu phóng: Phóng to/nhỏ</div>
-              </>
-            ) : (
-              <>
-                <div className="control-item"><span>🖱️</span> Chuột trái: Di chuyển</div>
-                <div className="control-item"><span>⌨️</span> Ctrl + Chuột: Xoay</div>
-                <div className="control-item"><span>🎡</span> Cuộn chuột: Phóng to/nhỏ</div>
-              </>
-            )}
-          </div>
+          )}
         </div>
 
         <button className="guide-start-btn" onClick={closeGuide}>
-          Tôi đã hiểu, bắt đầu thôi!
+          Tôi đã hiểu, bắt đầu khám phá!
         </button>
       </div>
     </div>
