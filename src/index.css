@@ -903,9 +903,12 @@ body,
     padding: 16px;
   }
 
+  .info-card-header {
+    margin-bottom: 12px;
+  }
   .info-card-title {
     font-size: 12px;
-    margin-bottom: 12px;
+    margin-bottom: 0;
   }
 
   .info-row {
@@ -1052,9 +1055,12 @@ body,
     border-radius: var(--radius-md);
   }
 
+  .info-card-header {
+    margin-bottom: 10px;
+  }
   .info-card-title {
     font-size: 11px;
-    margin-bottom: 10px;
+    margin-bottom: 0;
   }
 
   .info-row {
@@ -1605,6 +1611,11 @@ body,
   gap: 12px;
 }
 
+.overview-actions .start-guide-btn-inline,
+.overview-actions .guide-btn-exit {
+  border-radius: var(--radius-md) !important;
+}
+
 
 
 /* Mobile Responsive for Overview */
@@ -1643,23 +1654,22 @@ body,
   }
 
   .overview-actions .start-guide-btn-inline {
-    height: 56px;
-    font-size: 16px;
-    border-radius: var(--radius-lg);
+    font-size: 14px;
+    padding: 10px;
+    border-radius: var(--radius-md);
     background: linear-gradient(135deg, var(--accent), #3b6ae0);
     box-shadow: 0 8px 20px rgba(74, 125, 255, 0.3);
     width: 100%;
   }
 
   .overview-actions .guide-btn-exit {
-    height: 56px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--border);
     color: var(--text-secondary);
-    font-size: 16px;
-    border-radius: var(--radius-lg);
+    font-size: 14px;
+    border-radius: var(--radius-md);
     width: 100%;
-    padding: 0;
+    padding: 10px;
   }
 
   .overview-title {

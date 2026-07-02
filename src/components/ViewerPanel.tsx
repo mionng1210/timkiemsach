@@ -1,7 +1,7 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { MapControls, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import BookshelfScene, { type PathWaypoint } from './BookshelfScene';
 import type { SearchResult, RackInfo, ShelfInfo, CustomFeature } from '../types';
 
@@ -45,6 +45,8 @@ export default function ViewerPanel({
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [userStartRack, setUserStartRack] = useState<number | null>(null);
   const [isPathOverview, setIsPathOverview] = useState(false);
+  const [isInfoCardCollapsed, setIsInfoCardCollapsed] = useState(false);
+  const [isOverviewCollapsed, setIsOverviewCollapsed] = useState(false);
 
   const significantSteps = useMemo(() => {
     if (!guideWaypoints || guideWaypoints.length === 0) return [];
@@ -121,6 +123,8 @@ export default function ViewerPanel({
     setGuideWaypoints(null);
     setShowStartPicker(false);
     setUserStartRack(null);
+    setIsInfoCardCollapsed(false);
+    setIsOverviewCollapsed(false);
 
     // Reset focus khi đổi campus hoặc search result
     setFocusRack(selectedResult?.shelf?.rackNumber ?? null);
@@ -496,7 +500,7 @@ export default function ViewerPanel({
     }
   };
 
-  const handleSceneBayClick = (rackNumber: number, bay: number, face: number) => {
+  const handleSceneBayClick = useCallback((rackNumber: number, bay: number, face: number) => {
     const rack = racks.find((r) => r.rackNumber === rackNumber);
     if (!rack) return;
     const clickedShelf = rack.shelves.find((s) => s.bay === bay && s.face === face);
@@ -554,7 +558,7 @@ export default function ViewerPanel({
     if (clickedShelf && onBayClick) {
       onBayClick(clickedShelf);
     }
-  };
+  }, [racks, isAdminMode, adminSubMode, campus, focusRack, focusBay, focusFace, onBayClick]);
 
   const handleDragMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return; // Only left click
@@ -1177,46 +1181,114 @@ export default function ViewerPanel({
 
       {selectedResult && !isGuideMode && !isPathOverview && !(isAdminMode && adminSubMode === 'manage') && !(isMobile && isAdminMode && adminSubMode === 'menu') && !showStartPicker && (
         <div className="viewer-info-overlay">
-          <div className="info-card">
-            <div className="info-card-header">
-              <div className="info-card-title">Vị trí sách</div>
-              <div className="info-campus-badge">{selectedResult.campus}</div>
+          {isInfoCardCollapsed ? (
+            <div className="info-card">
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '6px', marginTop: '-8px', marginRight: '-8px' }}>
+                <button
+                  onClick={() => setIsInfoCardCollapsed(false)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '6px',
+                    width: '28px',
+                    height: '28px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#64748b',
+                    padding: 0,
+                    transition: 'all 0.2s'
+                  }}
+                  title="Mở rộng cửa sổ"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path fillRule="evenodd" d="M5.828 10.172a.5.5 0 0 0-.707 0l-4.096 4.096V11.5a.5.5 0 0 0-1 0v3.975a.5.5 0 0 0 .5.5H4.5a.5.5 0 0 0 0-1H1.732l4.096-4.096a.5.5 0 0 0 0-.707zm4.344-4.344a.5.5 0 0 0 .707 0l4.096-4.096V4.5a.5.5 0 1 0 1 0V.525a.5.5 0 0 0-.5-.5H11.5a.5.5 0 0 0 0 1h2.768l-4.096 4.096a.5.5 0 0 0 0 .707z"/>
+                  </svg>
+                </button>
+              </div>
+              <div>
+                {guideWaypoints ? (
+                  <button
+                    className="start-guide-btn-inline"
+                    onClick={() => { setUserStartRack(null); setShowStartPicker(true); }}
+                  >
+                    <span>🚶‍♂️</span> Tìm đường đi
+                  </button>
+                ) : (
+                  <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '14px', width: '100%', textAlign: 'center' }}>
+                    📍 Kệ {shelf!.rackNumber} - {shelf!.face === 1 ? 'Mặt trước' : 'Mặt sau'}
+                  </div>
+                )}
+              </div>
             </div>
+          ) : (
+            <div className="info-card">
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '6px', marginTop: '-8px', marginRight: '-8px' }}>
+                <button
+                  onClick={() => setIsInfoCardCollapsed(true)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '6px',
+                    width: '28px',
+                    height: '28px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#64748b',
+                    padding: 0,
+                    transition: 'all 0.2s'
+                  }}
+                  title="Thu gọn cửa sổ (Chỉ hiện nút Tìm đường đi)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path fillRule="evenodd" d="M.172 15.828a.5.5 0 0 0 .707 0l4.096-4.096V14.5a.5.5 0 1 0 1 0v-3.975a.5.5 0 0 0-.5-.5H1.5a.5.5 0 0 0 0 1h2.768L.172 15.121a.5.5 0 0 0 0 .707zM15.828.172a.5.5 0 0 0-.707 0l-4.096 4.096V1.5a.5.5 0 1 0-1 0v3.975a.5.5 0 0 0 .5.5H14.5a.5.5 0 0 0 0-1h-2.768L15.828.879a.5.5 0 0 0 0-.707z"/>
+                  </svg>
+                </button>
+              </div>
 
-            <div className="info-stats-grid">
-              <div className="stat-item">
-                <span className="stat-label">Dãy</span>
-                <span className="stat-value highlight">{shelf!.code.toUpperCase()}</span>
+              <div className="info-card-header">
+                <div className="info-card-title">Vị trí sách</div>
+                <div className="info-campus-badge">{selectedResult.campus}</div>
               </div>
-              <div className="stat-item">
-                <span className="stat-label">Kệ</span>
-                <span className="stat-value">{shelf!.rackNumber}</span>
+
+              <div className="info-stats-grid">
+                <div className="stat-item">
+                  <span className="stat-label">Dãy</span>
+                  <span className="stat-value highlight">{shelf!.code.toUpperCase()}</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-label">Kệ</span>
+                  <span className="stat-value">{shelf!.rackNumber}</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-label">Khoang</span>
+                  <span className="stat-value">{shelf!.bay}</span>
+                </div>
               </div>
-              <div className="stat-item">
-                <span className="stat-label">Khoang</span>
-                <span className="stat-value">{shelf!.bay}</span>
+
+              <div className="info-details-row">
+                <div className="detail-item">
+                  <span className="detail-icon">{shelf!.face === 1 ? '🔵' : '🟠'}</span>
+                  {shelf!.face === 1 ? 'Mặt trước' : 'Mặt sau'}
+                </div>
+                <div className="detail-item dewey">
+                  <span>Dewey:</span> {shelf!.deweyStart.toFixed(3)} – {shelf!.deweyEnd.toFixed(3)}
+                </div>
               </div>
+
+              {guideWaypoints && (
+                <button
+                  className="start-guide-btn-inline"
+                  onClick={() => { setUserStartRack(null); setShowStartPicker(true); }}
+                >
+                  <span>🚶‍♂️</span> Tìm đường đi
+                </button>
+              )}
             </div>
-
-            <div className="info-details-row">
-              <div className="detail-item">
-                <span className="detail-icon">{shelf!.face === 1 ? '🔵' : '🟠'}</span>
-                {shelf!.face === 1 ? 'Mặt trước' : 'Mặt sau'}
-              </div>
-              <div className="detail-item dewey">
-                <span>Dewey:</span> {shelf!.deweyStart.toFixed(3)} – {shelf!.deweyEnd.toFixed(3)}
-              </div>
-            </div>
-
-            {guideWaypoints && (
-              <button
-                className="start-guide-btn-inline"
-                onClick={() => { setUserStartRack(null); setShowStartPicker(true); }}
-              >
-                <span>🚶‍♂️</span> Tìm đường đi
-              </button>
-            )}
-          </div>
+          )}
         </div>
       )}
 
@@ -1410,6 +1482,7 @@ export default function ViewerPanel({
                 onClick={() => {
                   setShowStartPicker(false);
                   setIsPathOverview(true);
+                  setIsOverviewCollapsed(false);
                   onGuideModeChange?.(true);
                 }}
               >
@@ -1468,38 +1541,104 @@ export default function ViewerPanel({
 
       {isPathOverview && guideWaypoints && (
         <div className="overview-controls-overlay">
-          <div className="drag-handle"></div>
-          <div className="overview-header">
-            <div className="overview-icon">📍</div>
-            <div className="overview-title">Tổng quát đường đi</div>
-          </div>
-          <div className="overview-msg">
-            Hệ thống đã tính toán đường đi tối ưu cho bạn. Nhấn nút bên dưới để bắt đầu di chuyển.
-          </div>
-          <div className="overview-actions">
-            <button
-              className="start-guide-btn-inline"
-              style={{ marginTop: 0, flex: 1 }}
-              onClick={() => {
-                setIsPathOverview(false);
-                setIsGuideMode(true);
-                setCurrentGuideStep(0);
-              }}
-            >
-              🚶‍♂️ Bắt đầu di chuyển
-            </button>
-            <button
-              className="guide-btn guide-btn-exit"
-              style={{ marginTop: 0, flex: 1, padding: '10px', fontSize: '15px' }}
-              onClick={() => {
-                setIsPathOverview(false);
-                onGuideModeChange?.(false);
-                setShowStartPicker(true);
-              }}
-            >
-              Thoát
-            </button>
-          </div>
+          {isOverviewCollapsed ? (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 0, marginTop: '-8px', marginRight: '-8px' }}>
+                <button
+                  onClick={() => setIsOverviewCollapsed(false)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '6px',
+                    width: '28px',
+                    height: '28px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#64748b',
+                    padding: 0,
+                    transition: 'all 0.2s'
+                  }}
+                  title="Mở rộng cửa sổ"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path fillRule="evenodd" d="M5.828 10.172a.5.5 0 0 0-.707 0l-4.096 4.096V11.5a.5.5 0 0 0-1 0v3.975a.5.5 0 0 0 .5.5H4.5a.5.5 0 0 0 0-1H1.732l4.096-4.096a.5.5 0 0 0 0-.707zm4.344-4.344a.5.5 0 0 0 .707 0l4.096-4.096V4.5a.5.5 0 1 0 1 0V.525a.5.5 0 0 0-.5-.5H11.5a.5.5 0 0 0 0 1h2.768l-4.096 4.096a.5.5 0 0 0 0 .707z"/>
+                  </svg>
+                </button>
+              </div>
+              <button
+                className="start-guide-btn-inline"
+                style={{ marginTop: 0, width: '100%' }}
+                onClick={() => {
+                  setIsPathOverview(false);
+                  setIsGuideMode(true);
+                  setCurrentGuideStep(0);
+                }}
+              >
+                🚶‍♂️ Bắt đầu di chuyển
+              </button>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 0, marginTop: '-8px', marginRight: '-8px' }}>
+                <button
+                  onClick={() => setIsOverviewCollapsed(true)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '6px',
+                    width: '28px',
+                    height: '28px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#64748b',
+                    padding: 0,
+                    transition: 'all 0.2s'
+                  }}
+                  title="Thu gọn cửa sổ (Chỉ hiện nút Bắt đầu di chuyển)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path fillRule="evenodd" d="M.172 15.828a.5.5 0 0 0 .707 0l4.096-4.096V14.5a.5.5 0 1 0 1 0v-3.975a.5.5 0 0 0-.5-.5H1.5a.5.5 0 0 0 0 1h2.768L.172 15.121a.5.5 0 0 0 0 .707zM15.828.172a.5.5 0 0 0-.707 0l-4.096 4.096V1.5a.5.5 0 1 0-1 0v3.975a.5.5 0 0 0 .5.5H14.5a.5.5 0 0 0 0-1h-2.768L15.828.879a.5.5 0 0 0 0-.707z"/>
+                  </svg>
+                </button>
+              </div>
+              <div className="drag-handle"></div>
+              <div className="overview-header">
+                <div className="overview-icon">📍</div>
+                <div className="overview-title">Tổng quát đường đi</div>
+              </div>
+              <div className="overview-msg">
+                Hệ thống đã tính toán đường đi tối ưu cho bạn. Nhấn nút bên dưới để bắt đầu di chuyển.
+              </div>
+              <div className="overview-actions">
+                <button
+                  className="start-guide-btn-inline"
+                  style={{ marginTop: 0, flex: 1 }}
+                  onClick={() => {
+                    setIsPathOverview(false);
+                    setIsGuideMode(true);
+                    setCurrentGuideStep(0);
+                  }}
+                >
+                  🚶‍♂️ Bắt đầu di chuyển
+                </button>
+                <button
+                  className="guide-btn guide-btn-exit"
+                  style={{ marginTop: 0, flex: 1, padding: '10px' }}
+                  onClick={() => {
+                    setIsPathOverview(false);
+                    onGuideModeChange?.(false);
+                    setShowStartPicker(true);
+                  }}
+                >
+                  Thoát
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
       {showLoginModal && (
