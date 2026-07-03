@@ -1871,6 +1871,26 @@ body,
   border-color: var(--accent);
 }
 
+.admin-form-group select {
+  width: 100%;
+  padding: 7px 28px 7px 8px;
+  font-size: 12px;
+  background: var(--bg-primary) url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") no-repeat right 8px center;
+  background-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+.admin-form-group select:focus {
+  border-color: var(--accent);
+}
+
 .admin-actions {
   display: flex;
   flex-direction: column;
