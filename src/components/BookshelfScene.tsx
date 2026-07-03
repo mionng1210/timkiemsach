@@ -25,6 +25,7 @@ interface BookshelfSceneProps {
   onAddFeatureAt?: (x: number, z: number) => void;
   onFeatureClick?: (id: number) => void;
   editingFeatureId?: number | null;
+  editingFeature?: any | null;
 }
 
 const ROW_SPACING_Z = 4.0;
@@ -516,7 +517,8 @@ function FeatureGrid({
   onAddFeatureAt,
   onFeatureClick,
   rackPositions,
-  editingFeatureId
+  editingFeatureId,
+  editingFeature
 }: {
   visible: boolean;
   campus: string;
@@ -527,6 +529,7 @@ function FeatureGrid({
   onFeatureClick?: (id: number) => void;
   rackPositions?: { rackNumber: number, x: number, z: number }[];
   editingFeatureId?: number | null;
+  editingFeature?: any | null;
 }) {
   const [hoverPos, setHoverPos] = useState<[number, number] | null>(null);
 
@@ -564,12 +567,13 @@ function FeatureGrid({
 
       {/* 2. Hiển thị các khối hiện có */}
       {existingFeatures.map((feat) => {
-        const isEditing = editingFeatureId === feat.id;
+        const isEditing = editingFeatureId === feat.id || (editingFeature && editingFeature.id === feat.id);
+        const displayFeat = (isEditing && editingFeature && editingFeature.id) ? editingFeature : feat;
         return (
           <group key={`feat-group-${feat.id}`}>
             <mesh
-              position={[feat.pos_x, 0.6, feat.pos_z]}
-              rotation={[0, feat.rotation || 0, 0]}
+              position={[displayFeat.pos_x, 0.6, displayFeat.pos_z]}
+              rotation={[0, displayFeat.rotation || 0, 0]}
               castShadow receiveShadow
               onClick={(e) => {
                 if (isAdminMode && adminSubMode === 'features') {
@@ -589,19 +593,33 @@ function FeatureGrid({
                 }
               }}
             >
-              <boxGeometry args={[feat.width || 1.2, 1.2, feat.length]} />
+              <boxGeometry args={[displayFeat.width || 1.2, 1.2, displayFeat.length]} />
               <meshLambertMaterial color={isEditing ? "#d35400" : "#8b4513"} />
             </mesh>
             {/* Outline highlight xanh dương nếu khối đang được chọn chỉnh sửa */}
             {isEditing && (
-              <mesh position={[feat.pos_x, 0.6, feat.pos_z]} rotation={[0, feat.rotation || 0, 0]}>
-                <boxGeometry args={[(feat.width || 1.2) + 0.05, 1.25, feat.length + 0.05]} />
+              <mesh position={[displayFeat.pos_x, 0.6, displayFeat.pos_z]} rotation={[0, displayFeat.rotation || 0, 0]}>
+                <boxGeometry args={[(displayFeat.width || 1.2) + 0.05, 1.25, displayFeat.length + 0.05]} />
                 <meshBasicMaterial color="#3498db" wireframe transparent opacity={0.8} />
               </mesh>
             )}
           </group>
         );
       })}
+
+      {/* 2.5 Hiển thị bóng mờ review trước cho khối mới đang thêm (id = 0) */}
+      {visible && editingFeature && !editingFeature.id && (
+        <group key="preview-new-feature">
+          <mesh position={[editingFeature.pos_x, 0.6, editingFeature.pos_z]} rotation={[0, editingFeature.rotation || 0, 0]}>
+            <boxGeometry args={[editingFeature.width || 1.2, 1.2, editingFeature.length]} />
+            <meshLambertMaterial color="#e67e22" transparent opacity={0.65} />
+          </mesh>
+          <mesh position={[editingFeature.pos_x, 0.6, editingFeature.pos_z]} rotation={[0, editingFeature.rotation || 0, 0]}>
+            <boxGeometry args={[(editingFeature.width || 1.2) + 0.05, 1.25, editingFeature.length + 0.05]} />
+            <meshBasicMaterial color="#2ecc71" wireframe transparent opacity={0.9} />
+          </mesh>
+        </group>
+      )}
 
       {/* 3. Hiển thị các ô trống khả dụng để thêm mới */}
       {visible && availableSlots.map((slot, i) => {
@@ -746,6 +764,7 @@ const BookshelfScene = memo(function BookshelfScene({
   onAddFeatureAt,
   onFeatureClick,
   editingFeatureId,
+  editingFeature,
 }: BookshelfSceneProps) {
 
   const { sequentialRacks, customShelves, customBays } = useMemo(() => {
@@ -1145,7 +1164,7 @@ const BookshelfScene = memo(function BookshelfScene({
         <AdminGrid visible={!!isAdminMode} onAddRackAt={onAddRackAt} racks={racks} campus={campus} />
       )}
       {campus === 'Thu Duc' && (
-        <FeatureGrid visible={!!isAdminMode && adminSubMode === 'features'} campus={campus} existingFeatures={customFeatures} onAddFeatureAt={onAddFeatureAt} isAdminMode={isAdminMode} adminSubMode={adminSubMode} onFeatureClick={onFeatureClick} rackPositions={rackPositions} editingFeatureId={editingFeatureId} />
+        <FeatureGrid visible={!!isAdminMode && adminSubMode === 'features'} campus={campus} existingFeatures={customFeatures} onAddFeatureAt={onAddFeatureAt} isAdminMode={isAdminMode} adminSubMode={adminSubMode} onFeatureClick={onFeatureClick} rackPositions={rackPositions} editingFeatureId={editingFeatureId} editingFeature={editingFeature} />
       )}
       {markerPos && <HighlightMarker position={markerPos} height={highlightShelfHeight} />}
         </group>
