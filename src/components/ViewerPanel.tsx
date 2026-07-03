@@ -776,6 +776,7 @@ export default function ViewerPanel({
             isAdminMode={isAdminMode}
             adminSubMode={adminSubMode}
             editingFeatureId={editingFeature?.id || null}
+            editingFeature={editingFeature || null}
             onFeatureClick={(featureId) => {
               if (adminSubMode === 'features') {
                 const feat = features.find(f => f.id === featureId);
@@ -792,7 +793,8 @@ export default function ViewerPanel({
                   pos_z: z, // Trùng đúng tâm ô được chọn trên lưới
                   length: 2,
                   width: 1.2,
-                  rotation: 0
+                  rotation: 0,
+                  _timestamp: Date.now()
                 });
               }
             }}
@@ -1296,7 +1298,7 @@ export default function ViewerPanel({
       {isAdminMode && adminSubMode === 'features' && editingFeature && (
         <div
           className="admin-shelf-panel"
-          key={`feature-${editingFeature.id}-${editingFeature.pos_x}-${editingFeature.pos_z}-${editingFeature.length}`}
+          key={`feature-${editingFeature.id}-${editingFeature._timestamp || ''}`}
         >
           <h3>🟫 {editingFeature.id ? 'Sửa Khối' : 'Thêm Khối Mới'}</h3>
           <div className="admin-form-group">
@@ -1305,7 +1307,16 @@ export default function ViewerPanel({
           </div>
           <div className="admin-form-group">
             <label>Toạ độ X:</label>
-            <input type="number" id="featX" defaultValue={editingFeature.pos_x} step="0.5" />
+            <input
+              type="number"
+              id="featX"
+              defaultValue={editingFeature.pos_x}
+              step="0.5"
+              onChange={() => {
+                const posX = parseFloat((document.getElementById('featX') as HTMLInputElement)?.value) || 0;
+                setEditingFeature(prev => prev ? { ...prev, pos_x: posX } : null);
+              }}
+            />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
             <div className="admin-form-group">
@@ -1319,7 +1330,10 @@ export default function ViewerPanel({
                   const zStart = parseFloat((document.getElementById('featZ') as HTMLInputElement)?.value) || 0;
                   const cells = parseInt((document.getElementById('featLengthCells') as HTMLSelectElement)?.value) || 1;
                   const zEndInput = document.getElementById('featZEnd') as HTMLInputElement;
-                  if (zEndInput) zEndInput.value = (zStart + cells * 2.0).toString();
+                  const length = cells * 2.0;
+                  const posZ = zStart + length / 2.0;
+                  if (zEndInput) zEndInput.value = (zStart + length).toString();
+                  setEditingFeature(prev => prev ? { ...prev, pos_z: posZ, length } : null);
                 }}
               />
             </div>
@@ -1338,6 +1352,9 @@ export default function ViewerPanel({
                     const cells = Math.max(1, Math.round(diff / 2.0));
                     const selectEl = document.getElementById('featLengthCells') as HTMLSelectElement;
                     if (selectEl) selectEl.value = cells.toString();
+                    const length = cells * 2.0;
+                    const posZ = zStart + length / 2.0;
+                    setEditingFeature(prev => prev ? { ...prev, pos_z: posZ, length } : null);
                   }
                 }}
               />
@@ -1352,7 +1369,10 @@ export default function ViewerPanel({
                 const zStart = parseFloat((document.getElementById('featZ') as HTMLInputElement)?.value) || 0;
                 const cells = parseInt((document.getElementById('featLengthCells') as HTMLSelectElement)?.value) || 1;
                 const zEndInput = document.getElementById('featZEnd') as HTMLInputElement;
-                if (zEndInput) zEndInput.value = (zStart + cells * 2.0).toString();
+                const length = cells * 2.0;
+                const posZ = zStart + length / 2.0;
+                if (zEndInput) zEndInput.value = (zStart + length).toString();
+                setEditingFeature(prev => prev ? { ...prev, pos_z: posZ, length } : null);
               }}
             >
               {(() => {

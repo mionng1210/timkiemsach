@@ -42,4 +42,5 @@ export interface CustomFeature {
   length: number;
   width: number;
   rotation: number;
+  _timestamp?: number;
 }
