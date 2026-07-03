@@ -256,9 +256,48 @@ export default function ViewerPanel({
   const [adminSubMode, setAdminSubMode] = useState<'menu' | 'add' | 'manage' | 'features' | 'hidden' | null>(null);
   const [editingShelf, setEditingShelf] = useState<ShelfInfo | null>(null);
   const [editingFeature, setEditingFeature] = useState<CustomFeature | null>(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [confirmedCells, setConfirmedCells] = useState<number>(1);
   const [prefilledDewey, setPrefilledDewey] = useState<{
     s1: string, e1: string, s2: string, e2: string, c1: string, c2: string
   }>({ s1: '0.000', e1: '0.000', s2: '0.000', e2: '0.000', c1: '', c2: '' });
+
+  useEffect(() => {
+    if (editingFeature) {
+      setConfirmedCells(Math.round(editingFeature.length / 2.0));
+    } else {
+      setIsDropdownOpen(false);
+    }
+  }, [editingFeature?.id, editingFeature]);
+
+  useEffect(() => {
+    if (!isDropdownOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.custom-select-container')) {
+        setIsDropdownOpen(false);
+        if (editingFeature) {
+          const zStart = editingFeature.pos_z - editingFeature.length / 2;
+          const length = confirmedCells * 2.0;
+          const posZ = zStart + confirmedCells;
+          setEditingFeature(prev => prev ? { ...prev, pos_z: posZ, length } : null);
+        }
+      }
+    };
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, [isDropdownOpen, confirmedCells, editingFeature]);
+
+  useEffect(() => {
+    if (isDropdownOpen) {
+      setTimeout(() => {
+        const selectedEl = document.querySelector('.custom-select-option.selected');
+        if (selectedEl) {
+          selectedEl.scrollIntoView({ block: 'nearest' });
+        }
+      }, 50);
+    }
+  }, [isDropdownOpen]);
 
   useEffect(() => {
     if (campus !== 'Thu Duc' && adminSubMode === 'features') {
@@ -884,6 +923,7 @@ export default function ViewerPanel({
         )}
 
         {!isGuideMode && focusShelfPos && <FocusManager target={focusShelfPos} isPathView={true} campus={campus} highlightFace={focusFace} />}
+        {!isGuideMode && adminSubMode === 'features' && editingFeature && <FeatureFocusManager feature={editingFeature} />}
         {isGuideMode && guideWaypoints && (
           <FirstPersonCamera
             waypoints={guideWaypoints}
@@ -1297,106 +1337,71 @@ export default function ViewerPanel({
 
       {isAdminMode && adminSubMode === 'features' && editingFeature && (
         <div
-          className="admin-shelf-panel"
+          className="admin-shelf-panel feature-panel"
           key={`feature-${editingFeature.id}-${editingFeature._timestamp || ''}`}
         >
           <h3>🟫 {editingFeature.id ? 'Sửa Khối' : 'Thêm Khối Mới'}</h3>
-          <div className="admin-form-group">
-            <label>Loại (type):</label>
-            <input type="text" id="featType" defaultValue={editingFeature.type} />
-          </div>
-          <div className="admin-form-group">
-            <label>Toạ độ X:</label>
-            <input
-              type="number"
-              id="featX"
-              defaultValue={editingFeature.pos_x}
-              step="0.5"
-              onChange={() => {
-                const posX = parseFloat((document.getElementById('featX') as HTMLInputElement)?.value) || 0;
-                setEditingFeature(prev => prev ? { ...prev, pos_x: posX } : null);
-              }}
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <div className="admin-form-group">
-              <label>Toạ độ Z (bắt đầu):</label>
-              <input
-                type="number"
-                id="featZ"
-                defaultValue={editingFeature.pos_z - editingFeature.length / 2}
-                step="0.5"
-                onChange={() => {
-                  const zStart = parseFloat((document.getElementById('featZ') as HTMLInputElement)?.value) || 0;
-                  const cells = parseInt((document.getElementById('featLengthCells') as HTMLSelectElement)?.value) || 1;
-                  const zEndInput = document.getElementById('featZEnd') as HTMLInputElement;
-                  const length = cells * 2.0;
-                  const posZ = zStart + length / 2.0;
-                  if (zEndInput) zEndInput.value = (zStart + length).toString();
+          
+          <div className="admin-form-group custom-select-container" style={{ position: 'relative' }}>
+            <label>Chiều dài (số ô):</label>
+            <div 
+              className={`custom-select-trigger${isDropdownOpen ? ' active' : ''}`}
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            >
+              <span>{Math.round(editingFeature.length / 2.0)} ô ({editingFeature.length}m)</span>
+              <span className="custom-select-arrow">▼</span>
+            </div>
+            
+            {isDropdownOpen && (
+              <div 
+                className="custom-select-options"
+                onMouseLeave={() => {
+                  const zStart = editingFeature.pos_z - editingFeature.length / 2;
+                  const length = confirmedCells * 2.0;
+                  const posZ = zStart + confirmedCells;
                   setEditingFeature(prev => prev ? { ...prev, pos_z: posZ, length } : null);
                 }}
-              />
-            </div>
-            <div className="admin-form-group">
-              <label>Toạ độ Z (kết thúc):</label>
-              <input
-                type="number"
-                id="featZEnd"
-                defaultValue={editingFeature.pos_z + editingFeature.length / 2}
-                step="0.5"
-                onChange={() => {
-                  const zEnd = parseFloat((document.getElementById('featZEnd') as HTMLInputElement)?.value) || 0;
-                  const zStart = parseFloat((document.getElementById('featZ') as HTMLInputElement)?.value) || 0;
-                  const diff = zEnd - zStart;
-                  if (diff > 0) {
-                    const cells = Math.max(1, Math.round(diff / 2.0));
-                    const selectEl = document.getElementById('featLengthCells') as HTMLSelectElement;
-                    if (selectEl) selectEl.value = cells.toString();
-                    const length = cells * 2.0;
-                    const posZ = zStart + length / 2.0;
-                    setEditingFeature(prev => prev ? { ...prev, pos_z: posZ, length } : null);
-                  }
-                }}
-              />
-            </div>
+              >
+                {(() => {
+                  const currentCells = Math.round(editingFeature.length / 2.0);
+                  const optionsCount = Math.max(maxCells, currentCells);
+                  return Array.from({ length: optionsCount }).map((_, i) => {
+                    const cells = i + 1;
+                    const isSelected = cells === confirmedCells;
+                    return (
+                      <div
+                        key={cells}
+                        className={`custom-select-option${isSelected ? ' selected' : ''}`}
+                        onClick={() => {
+                          const zStart = editingFeature.pos_z - editingFeature.length / 2;
+                          const length = cells * 2.0;
+                          const posZ = zStart + cells;
+                          setConfirmedCells(cells);
+                          setEditingFeature(prev => prev ? { ...prev, pos_z: posZ, length } : null);
+                          setIsDropdownOpen(false);
+                        }}
+                        onMouseEnter={() => {
+                          const zStart = editingFeature.pos_z - editingFeature.length / 2;
+                          const length = cells * 2.0;
+                          const posZ = zStart + cells;
+                          setEditingFeature(prev => prev ? { ...prev, pos_z: posZ, length } : null);
+                        }}
+                      >
+                        {cells} ô ({cells * 2}m)
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
           </div>
-          <div className="admin-form-group">
-            <label>Chiều dài (số ô):</label>
-            <select
-              id="featLengthCells"
-              defaultValue={Math.round(editingFeature.length / 2.0)}
-              onChange={() => {
-                const zStart = parseFloat((document.getElementById('featZ') as HTMLInputElement)?.value) || 0;
-                const cells = parseInt((document.getElementById('featLengthCells') as HTMLSelectElement)?.value) || 1;
-                const zEndInput = document.getElementById('featZEnd') as HTMLInputElement;
-                const length = cells * 2.0;
-                const posZ = zStart + length / 2.0;
-                if (zEndInput) zEndInput.value = (zStart + length).toString();
-                setEditingFeature(prev => prev ? { ...prev, pos_z: posZ, length } : null);
-              }}
-            >
-              {(() => {
-                const currentCells = Math.round(editingFeature.length / 2.0);
-                const optionsCount = Math.max(maxCells, currentCells);
-                return Array.from({ length: optionsCount }).map((_, i) => (
-                  <option key={i + 1} value={i + 1}>
-                    {i + 1} ô ({(i + 1) * 2}m)
-                  </option>
-                ));
-              })()}
-            </select>
-          </div>
+
           <div className="admin-actions">
             <button className="admin-btn update" onClick={async () => {
-              const type = (document.getElementById('featType') as HTMLInputElement).value;
-              const posX = parseFloat((document.getElementById('featX') as HTMLInputElement).value);
-              const zStart = parseFloat((document.getElementById('featZ') as HTMLInputElement).value);
-              const cellSelect = document.getElementById('featLengthCells') as HTMLSelectElement;
-              const cellCount = parseInt(cellSelect.value) || 1;
-
-              // Tính toán lại chiều dài và tâm Z mới
-              const length = cellCount * 2.0;
-              const posZ = zStart + cellCount * 1.0;
+              const type = editingFeature.type;
+              const posX = editingFeature.pos_x;
+              const posZ = editingFeature.pos_z;
+              const length = editingFeature.length;
 
               // Kiểm tra đè lấp phía Client
               const isOverlapping = features.some(f => {
@@ -1998,5 +2003,49 @@ function FocusManager({ target, isPathView, campus, highlightFace }: { target: T
       }
     }
   });
+  return null;
+}
+
+function FeatureFocusManager({ feature }: { feature: CustomFeature }) {
+  const { controls, camera } = useThree();
+  const [isFocusing, setIsFocusing] = useState(false);
+  const targetCamPos = useMemo(() => new THREE.Vector3(), []);
+  const targetCenter = useMemo(() => new THREE.Vector3(), []);
+
+  useEffect(() => {
+    setIsFocusing(true);
+    
+    const cx = feature.pos_x;
+    const cz = feature.pos_z;
+    const len = feature.length;
+
+    targetCenter.set(cx, 0.6, cz);
+
+    // Calculate a comfortable target camera position to view the entire block
+    const viewDistance = Math.max(12, len * 1.3);
+    targetCamPos.set(cx - viewDistance * 0.7, viewDistance * 0.8 + 6, cz + viewDistance * 0.5);
+  }, [feature.id, feature.pos_x, feature.pos_z, feature.length]);
+
+  useEffect(() => {
+    if (!controls) return;
+    const stopFocus = () => setIsFocusing(false);
+    (controls as any).addEventListener('start', stopFocus);
+    return () => (controls as any).removeEventListener('start', stopFocus);
+  }, [controls]);
+
+  useFrame(() => {
+    if (controls && isFocusing) {
+      const distance = (controls as any).target.distanceTo(targetCenter);
+      const camDistance = camera.position.distanceTo(targetCamPos);
+      if (distance < 0.1 && camDistance < 0.5) {
+        setIsFocusing(false);
+      } else {
+        (controls as any).target.lerp(targetCenter, 0.07);
+        camera.position.lerp(targetCamPos, 0.07);
+        (controls as any).update();
+      }
+    }
+  });
+
   return null;
 }
