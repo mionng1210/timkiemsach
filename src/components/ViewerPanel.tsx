@@ -789,8 +789,8 @@ export default function ViewerPanel({
                   campus_id: 0,
                   type: 'low_rack',
                   pos_x: x,
-                  pos_z: z + 7, // Để Z đầu = z - 1 (vừa khít mép kệ ngoài cùng)
-                  length: 16,
+                  pos_z: z, // Trùng đúng tâm ô được chọn trên lưới
+                  length: 2,
                   width: 1.2,
                   rotation: 0
                 });
@@ -1303,19 +1303,43 @@ export default function ViewerPanel({
             <label>Loại (type):</label>
             <input type="text" id="featType" defaultValue={editingFeature.type} />
           </div>
+          <div className="admin-form-group">
+            <label>Toạ độ X:</label>
+            <input type="number" id="featX" defaultValue={editingFeature.pos_x} step="0.5" />
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <div className="admin-form-group">
-              <label>Toạ độ X:</label>
-              <input type="number" id="featX" defaultValue={editingFeature.pos_x} step="0.5" readOnly style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }} />
-            </div>
             <div className="admin-form-group">
               <label>Toạ độ Z (bắt đầu):</label>
               <input
                 type="number"
                 id="featZ"
                 defaultValue={editingFeature.pos_z - editingFeature.length / 2}
-                readOnly
-                style={{ backgroundColor: 'rgba(0,0,0,0.1)', cursor: 'not-allowed' }}
+                step="0.5"
+                onChange={() => {
+                  const zStart = parseFloat((document.getElementById('featZ') as HTMLInputElement)?.value) || 0;
+                  const cells = parseInt((document.getElementById('featLengthCells') as HTMLSelectElement)?.value) || 1;
+                  const zEndInput = document.getElementById('featZEnd') as HTMLInputElement;
+                  if (zEndInput) zEndInput.value = (zStart + cells * 2.0).toString();
+                }}
+              />
+            </div>
+            <div className="admin-form-group">
+              <label>Toạ độ Z (kết thúc):</label>
+              <input
+                type="number"
+                id="featZEnd"
+                defaultValue={editingFeature.pos_z + editingFeature.length / 2}
+                step="0.5"
+                onChange={() => {
+                  const zEnd = parseFloat((document.getElementById('featZEnd') as HTMLInputElement)?.value) || 0;
+                  const zStart = parseFloat((document.getElementById('featZ') as HTMLInputElement)?.value) || 0;
+                  const diff = zEnd - zStart;
+                  if (diff > 0) {
+                    const cells = Math.max(1, Math.round(diff / 2.0));
+                    const selectEl = document.getElementById('featLengthCells') as HTMLSelectElement;
+                    if (selectEl) selectEl.value = cells.toString();
+                  }
+                }}
               />
             </div>
           </div>
@@ -1324,14 +1348,11 @@ export default function ViewerPanel({
             <select
               id="featLengthCells"
               defaultValue={Math.round(editingFeature.length / 2.0)}
-              style={{
-                width: '100%',
-                padding: '6px 8px',
-                borderRadius: '4px',
-                border: '1px solid var(--border)',
-                backgroundColor: 'rgba(0, 0, 0, 0.3)',
-                color: 'var(--text-primary)',
-                fontSize: '12px'
+              onChange={() => {
+                const zStart = parseFloat((document.getElementById('featZ') as HTMLInputElement)?.value) || 0;
+                const cells = parseInt((document.getElementById('featLengthCells') as HTMLSelectElement)?.value) || 1;
+                const zEndInput = document.getElementById('featZEnd') as HTMLInputElement;
+                if (zEndInput) zEndInput.value = (zStart + cells * 2.0).toString();
               }}
             >
               {(() => {
